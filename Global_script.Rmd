@@ -1,0 +1,3110 @@
+---
+title: "Global_script"
+output: html_document
+date: "2023-11-30"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load all the required packages
+```{r}
+library(DESeq2)
+library(tidyverse)
+library(edgeR)
+library(stringr)
+library(Seurat)
+library(ggplot2)
+library(svglite)
+library(readr)
+library(limma)
+library(gridExtra)
+library(ComplexHeatmap)
+library(survival)
+library(survminer)
+library(fgsea)
+library(org.Hs.eg.db)
+library(DT)
+```
+
+# Path information
+```{r}
+PATH_DESEQ2 = "/home/bioit/ldschaet/Desktop/NatureSubmission/Results/DESEq2/"
+PATH_SIGNATURE = "/home/bioit/ldschaet/Desktop/NatureSubmission/Results/Signatures/"
+PATH_GSEA = "/home/bioit/ldschaet/Desktop/NatureSubmission/Results/GSEA/"
+PATH_FIG_SIGNATURE = "/home/bioit/ldschaet/Desktop/NatureSubmission/Figures/Signatures/"
+PATH_FIG_SEEDING_IDENTIFICATION = "/home/bioit/ldschaet/Desktop/NatureSubmission/Figures/SeedingLesionIdentification/"
+PATH_FIG_SCMARKERS = "/home/bioit/ldschaet/Desktop/NatureSubmission/Figures/SingleCellMarkers/"
+PATH_FIG_HEATMAPS = "/home/bioit/ldschaet/Desktop/NatureSubmission/Figures/Heatmaps/"
+PATH_FIG_SURVIVAL = "/home/bioit/ldschaet/Desktop/NatureSubmission/Figures/SurvivalCurves/"
+PATH_FIG_GSEA = "/home/bioit/ldschaet/Desktop/NatureSubmission/Figures/GSEA/"
+PATH_FIG_DOTPLOT = "/home/bioit/ldschaet/Desktop/NatureSubmission/Figures/DotPlots/"
+PATH_FIG_SC = "/home/bioit/ldschaet/Desktop/NatureSubmission/Figures/SingleCell/"
+PATH_FIGSHARE = "/home/bioit/ldschaet/Desktop/FigShare/"
+```
+
+# MLN-RP-NL comparison in the locally advanced prostate cancer cohort
+```{r}
+LA_counts <- read.table("/home/bioit/ldschaet/Desktop/NatureSubmission/Data/locally_advanced_counts.csv", header=T, row.name=1, sep=",")
+colnames(LA_counts) <- ifelse(colnames(LA_counts) != "HR_ID5_MLNL", colnames(LA_counts), "HR_ID5_NL") #one sample was wrongly labeled
+write.csv(LA_counts, paste0(PATH_FIGSHARE, "locally_advanced_cohort_counts", ".csv"))
+
+LA_info <- data.frame(sapply(colnames(LA_counts), 
+                             function(x) str_extract(str_split(x, "_")[[1]][3],
+                                                     "[^0-9]+")))
+colnames(LA_info) <- c("sampletype")
+LA_info$patID <-  sapply(colnames(LA_counts), function(x) str_split(x, "_")[[1]][2])
+
+# MLN vs. RP
+#metadata <- LA_info[LA_info$sampletype!="NL",]
+#metadata$patID <- factor(metadata$patID)
+#metadata$sampletype <- factor(metadata$sampletype)
+#counts <- LA_counts[, rownames(metadata)]
+#keep <- filterByExpr(counts, group = metadata$sampletype)
+#counts <- counts[keep,]
+#dds <- DESeqDataSetFromMatrix(counts, design = ~patID+sampletype, colData=metadata)
+#dds <- DESeq(dds)
+
+#LA_MLN_RP_res <- results(dds, contrast=c("sampletype","MLN","RP"))
+#write.csv(LA_MLN_RP_res, paste0(PATH_DESEQ2, "LA_MLN_RP_res", ".csv"))
+
+LA_MLN_RP_res <- read.csv(paste0(PATH_DESEQ2, "LA_MLN_RP_res", ".csv"), row.names = 1)
+select_down <- which((LA_MLN_RP_res$padj < .05)&(LA_MLN_RP_res$log2FoldChange<=-1.5))
+select_up <- which((LA_MLN_RP_res$padj < .05)&(LA_MLN_RP_res$log2FoldChange>=1.5))
+LA_MLN_RP_down = LA_MLN_RP_res[select_down, ]
+LA_MLN_RP_up = LA_MLN_RP_res[select_up, ]
+print(dim(LA_MLN_RP_down))
+print(dim(LA_MLN_RP_up))
+
+# RP vs. NL
+#metadata <- LA_info[LA_info$sampletype!="MLN",]
+#metadata$patID <- factor(metadata$patID)
+#metadata$sampletype <- factor(metadata$sampletype)
+#counts <- LA_counts[, rownames(metadata)]
+#keep <- filterByExpr(counts, group = metadata$sampletype)
+#counts <- counts[keep,]
+#dds <- DESeqDataSetFromMatrix(counts, design = ~patID+sampletype, colData=metadata)
+#dds <- DESeq(dds)
+#LA_RP_NL_res <- results(dds, contrast=c("sampletype","RP","NL"))
+#write.csv(LA_RP_NL_res, paste0(PATH_DESEQ2, "LA_RP_NL_res", ".csv"))
+
+LA_RP_NL_res <- read.csv(paste0(PATH_DESEQ2, "LA_RP_NL_res", ".csv"), row.names = 1)
+select_down <- which((LA_RP_NL_res$padj < .05)&(LA_RP_NL_res$log2FoldChange<=-1.5))
+select_up <- which((LA_RP_NL_res$padj < .05)&(LA_RP_NL_res$log2FoldChange>=1.5))
+LA_RP_NL_down = LA_RP_NL_res[select_down, ]
+LA_RP_NL_up = LA_RP_NL_res[select_up, ]
+print(dim(LA_RP_NL_down))
+print(dim(LA_RP_NL_up))
+```
+```{r}
+DN_counts <- read.table("/home/bioit/ldschaet/Desktop/NatureSubmission/Data/de_novo_counts_47.csv", header=T, row.name=1, sep=",")
+DN_counts <- subset(DN_counts, select = -M1RP_ID23_RP4)
+colnames(DN_counts) <- ifelse(colnames(DN_counts) != "M1RP_ID23_RP44",
+                              colnames(DN_counts), "M1RP_ID23_RP4") 
+write.csv(DN_counts, paste0(PATH_FIGSHARE, "de_novo_cohort_counts", ".csv"))
+
+#one sample was re-sequenced because of bad quality 
+
+DN_info <- data.frame(sapply(colnames(DN_counts), 
+                             function(x) str_extract(str_split(x, "_")[[1]][3],
+                                                     "[^0-9]+")))
+colnames(DN_info) <- c("sampletype")
+DN_info$patID <-  sapply(colnames(DN_counts), 
+                           function(x) str_split(x, "_")[[1]][2])
+
+# MLN vs. RP
+#metadata <- DN_info
+#metadata$patID <- factor(metadata$patID)
+#metadata$sampletype <- factor(metadata$sampletype)
+#counts <- DN_counts[, rownames(metadata)]
+#keep <- filterByExpr(counts, group = metadata$sampletype)
+#counts <- counts[keep,]
+#dds <- DESeqDataSetFromMatrix(counts, design = ~patID+sampletype, colData=metadata)
+#dds <- DESeq(dds)
+#DN_MLN_RP_res <- results(dds, contrast=c("sampletype","MLN","RP"))
+#write.csv(DN_MLN_RP_res, paste0(PATH_DESEQ2, "DN_MLN_RP_res", ".csv"))
+
+DN_MLN_RP_res <- read.csv(paste0(PATH_DESEQ2, "DN_MLN_RP_res", ".csv"), row.names = 1)
+select_down <- which((DN_MLN_RP_res$padj < .05)&(DN_MLN_RP_res$log2FoldChange<=-1.5))
+select_up <- which((DN_MLN_RP_res$padj < .05)&(DN_MLN_RP_res$log2FoldChange>=1.5))
+DN_MLN_RP_down = DN_MLN_RP_res[select_down, ]
+DN_MLN_RP_up = DN_MLN_RP_res[select_up, ]
+
+print(dim(DN_MLN_RP_down))
+print(dim(DN_MLN_RP_up))
+```
+```{r}
+tcga_counts <- read.table("/home/bioit/ldschaet/Desktop/Paper3/Data/Public_cohorts/TCGA/TCGA-PRAD.RP_NL.csv.gz", sep=",",header=T, row.name=1)
+write.csv(tcga_counts, paste0(PATH_FIGSHARE, "tcga_prad_counts", ".csv"))
+
+TCGAmetadata <- data.frame(sampleID=colnames(tcga_counts))
+TCGAmetadata$sampletype <- factor(c(rep(c("RP"),54), rep(c("NL"), 52)))
+TCGAmetadata$patID <- substr(TCGAmetadata$sampleID, 1, nchar(TCGAmetadata$sampleID)-4)
+TCGAmetadata$patID <- factor(TCGAmetadata$patID)
+
+#keep <- filterByExpr(tcga_counts, group = TCGAmetadata$sampletype)
+#counts <- tcga_counts[keep,]
+#dds <- DESeqDataSetFromMatrix(round(counts), design = ~patID+sampletype, colData=TCGAmetadata)
+#dds <- DESeq(dds)
+#TCGA_RP_NL_res <- results(dds, contrast=c("sampletype","RP","NL"))
+#write.csv(TCGA_RP_NL_res, paste0(PATH_DESEQ2, "TCGA_RP_NL_res", ".csv"))
+
+TCGA_RP_NL_res <- read.csv(paste0(PATH_DESEQ2, "TCGA_RP_NL_res", ".csv"), row.names = 1)
+select_down <- which((TCGA_RP_NL_res$padj < .05)&(TCGA_RP_NL_res$log2FoldChange<=-1.5))
+select_up <- which((TCGA_RP_NL_res$padj < .05)&(TCGA_RP_NL_res$log2FoldChange>=1.5))
+TCGA_RP_NL_down = TCGA_RP_NL_res[select_down, ]
+TCGA_RP_NL_up = TCGA_RP_NL_res[select_up, ]
+print(dim(TCGA_RP_NL_down))
+print(dim(TCGA_RP_NL_up))
+```
+
+```{r}
+data <- cbind(DN_counts, LA_counts)
+cohort <- sub("_.*", "", colnames(data))
+cohort <- gsub("HR", "LA", cohort)
+cohort <- gsub("M1RP", "DN", cohort)
+data_info <- as.data.frame(cohort)
+colnames(data_info) = "cohort"
+rownames(data_info) = colnames(data)
+data_info["patID_id"] = sub("^[^_]+_([^_]+)_.*$", "\\1", rownames(data_info))
+data_info["sampletype"] =  sub(".*_([^0-9]+)[0-9]*$", "\\1",  rownames(data_info))
+data_info["sampleID"] = sub(".*_.*_(.*)", "\\1", rownames(data_info))
+
+ranks <- apply(data, 2, rank)
+data.pca = prcomp(t(ranks), rank.=2, retx=T,scale=F,center=T)
+a = summary(data.pca)
+pc = as.data.frame(a$x)
+pca_scores <- cbind(pc, data_info["cohort"], data_info["sampletype"])
+write.csv(pca_scores, paste0(PATH_FIGSHARE, "SupplementaryFigure2_Data", ".csv"))
+
+pca_signature_plot <- ggplot(data=pca_scores, aes(x=PC1, y=PC2, color=sampletype))+
+  geom_point(aes(shape=cohort), size=2)+
+  labs(x="Principal Component 1", y="Principal Component 2")+
+  theme_classic()
+ggsave(paste0(PATH_FIG_SIGNATURE, "LA_DN_PCAplot_allgenes", ".svg"), plot=pca_signature_plot, width = 8, height = 8)
+```
+
+
+
+```{r}
+LA_MLN_RP_NL_down <- intersect(union(rownames(LA_MLN_RP_down), rownames(DN_MLN_RP_down)),
+                               union(rownames(LA_RP_NL_down), rownames(TCGA_RP_NL_down)))
+LA_MLN_RP_NL_up <- intersect(union(rownames(LA_MLN_RP_up), rownames(DN_MLN_RP_up)),
+                             union(rownames(LA_RP_NL_up), rownames(TCGA_RP_NL_up)))
+progression <- union(LA_MLN_RP_NL_down, LA_MLN_RP_NL_up)
+length(progression)
+```
+
+```{r}
+progression_df <- data.frame(Genes = progression)
+write.csv(progression_df, paste0(PATH_SIGNATURE, "progression_signature", ".csv"), row.names = FALSE)
+```
+
+
+```{r}
+data <- cbind(LA_counts, DN_counts)
+data <- data[progression,]
+
+cohort <- sub("_.*", "", colnames(data))
+cohort <- gsub("HR", "LA", cohort)
+cohort <- gsub("M1RP", "DN", cohort)
+data_info <- as.data.frame(cohort)
+colnames(data_info) = "cohort"
+rownames(data_info) = colnames(data)
+data_info["patID_id"] = sub("^[^_]+_([^_]+)_.*$", "\\1", rownames(data_info))
+data_info["sampletype"] =  sub(".*_([^0-9]+)[0-9]*$", "\\1",  rownames(data_info))
+data_info["sampleID"] = sub(".*_.*_(.*)", "\\1", rownames(data_info))
+
+ranks <- apply(data, 1, rank)
+pca_result <- prcomp(t(ranks), rank.=2, retx=T,scale=F,center=T)
+pca_scores <- as.data.frame(pca_result$rotation[, 1:2])
+pca_scores <- cbind(pca_scores, data_info["cohort"], data_info["sampletype"])
+write.csv(pca_scores, paste0(PATH_FIGSHARE, "SupplementaryFigure3_Data", ".csv"))
+
+pca_signature_plot <- ggplot(data=pca_scores, aes(x=PC1, y=PC2, color=sampletype))+
+  geom_point(aes(shape=cohort), size=2)+
+  labs(x="Principal Component 1", y="Principal Component 2")+
+  theme_classic()
+ggsave(paste0(PATH_FIG_SIGNATURE, "LA_DN_PCAplot", ".svg"), plot=pca_signature_plot, width = 8, height = 4)
+```
+
+```{r}
+pca_loadings = data.frame(pca_result$x)
+pca_loadings = pca_loadings[, c("PC1", "PC2")]
+pca_loadings$absPC1 <- abs(pca_loadings$PC1) 
+pca_loadings$absPC2 <- abs(pca_loadings$PC2) 
+pca_loadings$diff <-pca_loadings$absPC1-pca_loadings$absPC2
+
+
+progression_signature = rownames(pca_loadings[(pca_loadings$absPC1>150)&(pca_loadings$diff>50),])
+print(length(progression_signature))
+
+progression_signature_df <- data.frame(Genes = progression_signature)
+write.csv(progression_signature_df, paste0(PATH_SIGNATURE, "progression_signature_top225_PC1", ".csv"), row.names = F)
+```
+```{r}
+schmidt <- c('PAGE4','KCTD14','KIAA1210','KRT23','TGM4','RP3-523K23.2','KRT5',
+             'C20orf166-AS1','MIR205HG','RP11-746E8.1','SMOC1','COL13A1','RBFOX3',
+             'RP11-160A10.2','FAM83B','FLRT3','MUC4','KRT15','HEATR8')
+print(length(schmidt))
+print(length(intersect(schmidt, progression_signature)))
+all_genes <- intersect(rownames(LA_counts), rownames(tcga_counts))
+schmidt_in_signature = intersect(schmidt, progression_signature)
+schmidt_not_in_signature = intersect(setdiff(schmidt, progression_signature), all_genes)
+genes_not_in_signature = setdiff(all_genes, progression_signature)
+print(schmidt_in_signature)
+
+# Compared to the rest of the genes
+print(length(schmidt_in_signature))
+print(length(progression_signature))
+print(length(schmidt_not_in_signature))
+print(length(genes_not_in_signature))
+print(fisher.test(matrix(c(length(schmidt_in_signature), 
+                           length(progression_signature),
+                           length(schmidt_not_in_signature),
+                           length(genes_not_in_signature)), nrow=2), 
+                  alternative="greater"))
+
+# Compared to a random gene signature of the same size
+set.seed(17)
+random_signature <-  sample(all_genes, length(progression_signature))
+schmidt_in_random_signature = intersect(schmidt, random_signature)
+
+print(fisher.test(matrix(c(length(schmidt_in_signature), 
+                           length(progression_signature),
+                           length(schmidt_in_random_signature),
+                           length(random_signature)), nrow=2), 
+                  alternative="greater"))
+
+```
+
+
+
+
+```{r}
+data <- cbind(LA_counts, DN_counts)
+data <- data[progression_signature,]
+
+cohort <- sub("_.*", "", colnames(data))
+cohort <- gsub("HR", "LA", cohort)
+cohort <- gsub("M1RP", "DN", cohort)
+data_info <- as.data.frame(cohort)
+colnames(data_info) = "cohort"
+rownames(data_info) = colnames(data)
+data_info["patID"] = sub("^[^_]+_([^_]+)_.*$", "\\1", rownames(data_info))
+data_info["sampletype"] =  sub(".*_([^0-9]+)[0-9]*$", "\\1",  rownames(data_info))
+data_info["sampleID"] = sub(".*_.*_(.*)", "\\1", rownames(data_info))
+
+ranks <- apply(data, 1, rank)
+pca_result <- prcomp(t(ranks), rank.=2, retx=T,scale=F,center=T)
+pca_scores <- as.data.frame(pca_result$rotation[, 1:2])
+pca_scores <- cbind(pca_scores, data_info["cohort"], data_info["sampletype"])
+write.csv(pca_scores, paste0(PATH_FIGSHARE, "Figure1_Data", ".csv"))
+
+pca_signature_plot <- ggplot(data=pca_scores, aes(x=PC1, y=PC2, color=sampletype))+
+  geom_point(aes(shape=cohort), size=2)+
+  labs(x="Principal Component 1", y="Principal Component 2")+
+  theme_classic()
+ggsave(paste0(PATH_FIG_SIGNATURE, "LA_DN_PCAplot_top200_PC1", ".svg"), plot=pca_signature_plot, width = 8, height = 4)
+```
+
+```{r}
+PerformPCA <- function(patID, data_info, cohort, signature, data){
+  pat_info <- data_info[(data_info$cohort==cohort)&(data_info$patID==patID),]
+  pat_info$patID <- patID
+  pat_counts <- data[signature, rownames(pat_info)]
+  pat_ranks <- apply(pat_counts, 1, rank)
+  pca_result <- prcomp(t(pat_ranks))
+  pca_scores <- as.data.frame(pca_result$rotation[, 1:2])
+  pca_scores <- cbind(pca_scores, pat_info[,c("cohort", "sampletype", "sampleID", "patID")])
+  return (pca_scores)
+}
+```
+
+
+```{r}
+DN_pat = c("ID3", "ID4", "ID8", "ID23", "ID26", "ID33")
+DN_pca_pat_scores = data.frame()
+mln_lines = c()
+thres_lines = c()
+rp_lines = c()
+for (patID in DN_pat) {
+  DN_pca_pat = PerformPCA(patID, data_info=data_info, cohort="DN", signature=progression_signature, data=data)
+  if (max(DN_pca_pat$PC1[DN_pca_pat$sampletype=="MLN"])>0){
+    DN_pca_pat$PC1 = - DN_pca_pat$PC1}
+  maxRP = max(DN_pca_pat["PC1"][DN_pca_pat["sampletype"]=="RP"])
+  medianMLN = median(DN_pca_pat["PC1"][DN_pca_pat["sampletype"]=="MLN"])
+  thres = medianMLN+2/3*abs(medianMLN-maxRP)
+
+  mln_lines = union(mln_lines, medianMLN)
+  rp_lines = union(rp_lines, maxRP)
+  thres_lines = union(thres_lines, thres)
+  DN_pca_pat_scores = rbind(DN_pca_pat_scores, DN_pca_pat)
+}
+DN_pca_pat_scores$patID = factor(DN_pca_pat_scores$patID, levels=DN_pat)
+
+write.csv(DN_pca_pat_scores, paste0(PATH_FIGSHARE, "Figure3_Data", ".csv"))
+
+heuristic_lines = data.frame(patID=DN_pat,MLN =mln_lines, RP = rp_lines, thres = thres_lines)
+heuristic_lines$patID = factor(heuristic_lines$patID, levels=DN_pat)
+
+DN_seeding_lesion_identification_plot <- ggplot(data=DN_pca_pat_scores, aes(x=PC1, y=PC2, color=sampletype, label=sampleID))+
+  geom_point(aes(shape=cohort), size=2)+
+  geom_text(hjust = 1, vjust = 1)+
+  labs(x="Principal Component 1", y="Principal Component 2")+
+  theme_bw()+
+  geom_vline(data = heuristic_lines, aes(xintercept = MLN), linetype = "dashed", color = "red")+
+  geom_vline(data = heuristic_lines, aes(xintercept = RP), linetype = "dashed", color = "blue")+
+  geom_vline(data = heuristic_lines, aes(xintercept = thres), linetype = "dashed", color = "purple")+
+  xlim(c(-0.9, 0.9))+
+  facet_wrap(~patID, ncol = 2)
+
+ggsave(paste0(PATH_FIG_SEEDING_IDENTIFICATION, "DN_seeding_lesion_identification_plot", ".svg"), plot=DN_seeding_lesion_identification_plot, width = 10, height = 10)
+```
+
+```{r}
+LA_pat_one_S = c("ID1", "ID3", "ID4", "ID15", "ID18")
+
+LA_pca_pat_scores = data.frame()
+mln_lines = c()
+thres_lines = c()
+rp_lines = c()
+for (patID in LA_pat_one_S) {
+  LA_pca_pat = PerformPCA(patID, data_info=data_info, cohort="LA", signature=progression_signature, data=data)
+  if (max(LA_pca_pat$PC1[LA_pca_pat$sampletype=="MLN"])>0){
+    LA_pca_pat$PC1 = - LA_pca_pat$PC1}
+  maxRP = max(LA_pca_pat["PC1"][LA_pca_pat["sampletype"]=="RP"])
+  medianMLN = median(LA_pca_pat["PC1"][LA_pca_pat["sampletype"]=="MLN"])
+  thres = medianMLN+2/3*abs(medianMLN-maxRP)
+
+  mln_lines = union(mln_lines, medianMLN)
+  rp_lines = union(rp_lines, maxRP)
+  thres_lines = union(thres_lines, thres)
+  LA_pca_pat_scores = rbind(LA_pca_pat_scores, LA_pca_pat)
+}
+LA_pca_pat_scores$patID = factor(LA_pca_pat_scores$patID, levels=LA_pat_one_S)
+
+write.csv(LA_pca_pat_scores, paste0(PATH_FIGSHARE, "Figure2_Data", ".csv"))
+
+heuristic_lines = data.frame(patID=LA_pat_one_S,MLN =mln_lines, RP = rp_lines, thres = thres_lines)
+heuristic_lines$patID = factor(heuristic_lines$patID, levels=LA_pat_one_S)
+
+LA_seeding_lesion_identification_plot <- ggplot(data=LA_pca_pat_scores, aes(x=PC1, y=PC2, color=sampletype, label=sampleID))+
+  geom_point(aes(shape=cohort), size=2)+
+  geom_text(hjust = 1, vjust = 0)+
+  labs(x="Principal Component 1", y="Principal Component 2")+
+  theme_bw()+
+  geom_vline(data = heuristic_lines, aes(xintercept = MLN), linetype = "dashed", color = "red")+
+  geom_vline(data = heuristic_lines, aes(xintercept = RP), linetype = "dashed", color = "blue")+
+  geom_vline(data = heuristic_lines, aes(xintercept = thres), linetype = "dashed", color = "purple")+
+  xlim(c(-0.7, 0.7))+
+  facet_wrap(~patID, ncol = 2)
+
+ggsave(paste0(PATH_FIG_SEEDING_IDENTIFICATION, "LA_one_seeding_lesion_plot", ".svg"), plot=LA_seeding_lesion_identification_plot, width = 10, height = 10)
+```
+
+
+```{r}
+LA_pat_multiple_S = c("ID5", "ID6", "ID7", "ID9", "ID10", "ID11", "ID17")
+
+LA_pca_pat_scores = data.frame()
+mln_lines = c()
+thres_lines = c()
+rp_lines = c()
+for (patID in LA_pat_multiple_S) {
+  LA_pca_pat = PerformPCA(patID, data_info=data_info, cohort="LA", signature=progression_signature, data=data)
+  if (max(LA_pca_pat$PC1[LA_pca_pat$sampletype=="MLN"])>0){
+    LA_pca_pat$PC1 = - LA_pca_pat$PC1}
+  maxRP = max(LA_pca_pat["PC1"][LA_pca_pat["sampletype"]=="RP"])
+  medianMLN = median(LA_pca_pat["PC1"][LA_pca_pat["sampletype"]=="MLN"])
+  thres = medianMLN+2/3*abs(medianMLN-maxRP)
+
+  mln_lines = union(mln_lines, medianMLN)
+  rp_lines = union(rp_lines, maxRP)
+  thres_lines = union(thres_lines, thres)
+  LA_pca_pat_scores = rbind(LA_pca_pat_scores, LA_pca_pat)
+}
+LA_pca_pat_scores$patID = factor(LA_pca_pat_scores$patID, levels=LA_pat_multiple_S)
+write.csv(LA_pca_pat_scores, paste0(PATH_FIGSHARE, "SupplementaryFigure41_Data", ".csv"))
+
+heuristic_lines = data.frame(patID=LA_pat_multiple_S,MLN =mln_lines, RP = rp_lines, thres = thres_lines)
+heuristic_lines$patID = factor(heuristic_lines$patID, levels=LA_pat_multiple_S)
+
+LA_seeding_lesion_identification_plot <- ggplot(data=LA_pca_pat_scores, aes(x=PC1, y=PC2, color=sampletype, label=sampleID))+
+  geom_point(aes(shape=cohort), size=2)+
+  geom_text(hjust = 1, vjust = 0)+
+  labs(x="Principal Component 1", y="Principal Component 2")+
+  theme_bw()+
+  geom_vline(data = heuristic_lines, aes(xintercept = MLN), linetype = "dashed", color = "red")+
+  geom_vline(data = heuristic_lines, aes(xintercept = RP), linetype = "dashed", color = "blue")+
+  geom_vline(data = heuristic_lines, aes(xintercept = thres), linetype = "dashed", color = "purple")+
+  xlim(c(-0.7, 0.7))+
+  facet_wrap(~patID, ncol = 2)
+
+ggsave(paste0(PATH_FIG_SEEDING_IDENTIFICATION, "LA_multiple_seeding_lesion_plot", ".svg"), plot=LA_seeding_lesion_identification_plot, width = 10, height = 12)
+```
+
+
+```{r}
+LA_pat_NS = c("ID2", "ID16","ID19", "ID24", "ID25")
+
+LA_pca_pat_scores = data.frame()
+mln_lines = c()
+thres_lines = c()
+rp_lines = c()
+for (patID in LA_pat_NS) {
+  LA_pca_pat = PerformPCA(patID, data_info=data_info, cohort="LA", signature=progression_signature, data=data)
+  if (max(LA_pca_pat$PC1[LA_pca_pat$sampletype=="MLN"])>0){
+    LA_pca_pat$PC1 = - LA_pca_pat$PC1}
+  maxRP = max(LA_pca_pat["PC1"][LA_pca_pat["sampletype"]=="RP"])
+  medianMLN = median(LA_pca_pat["PC1"][LA_pca_pat["sampletype"]=="MLN"])
+  thres = medianMLN+2/3*abs(medianMLN-maxRP)
+
+  mln_lines = union(mln_lines, medianMLN)
+  rp_lines = union(rp_lines, maxRP)
+  thres_lines = union(thres_lines, thres)
+  LA_pca_pat_scores = rbind(LA_pca_pat_scores, LA_pca_pat)
+}
+
+LA_pca_pat_scores$patID = factor(LA_pca_pat_scores$patID, levels=LA_pat_NS)
+write.csv(LA_pca_pat_scores, paste0(PATH_FIGSHARE, "SupplementaryFigure42_Data", ".csv"))
+
+heuristic_lines = data.frame(patID=LA_pat_NS, MLN =mln_lines, RP = rp_lines, thres = thres_lines)
+heuristic_lines$patID = factor(heuristic_lines$patID, levels=LA_pat_NS)
+
+LA_seeding_lesion_identification_plot <- ggplot(data=LA_pca_pat_scores, aes(x=PC1, y=PC2, color=sampletype, label=sampleID))+
+  geom_point(aes(shape=cohort), size=2)+
+  geom_text(hjust = 1, vjust = 0)+
+  labs(x="Principal Component 1", y="Principal Component 2")+
+  theme_bw()+
+  geom_vline(data = heuristic_lines, aes(xintercept = MLN), linetype = "dashed", color = "red")+
+  geom_vline(data = heuristic_lines, aes(xintercept = RP), linetype = "dashed", color = "blue")+
+  geom_vline(data = heuristic_lines, aes(xintercept = thres), linetype = "dashed", color = "purple")+
+  xlim(c(-0.7, 0.7))+
+  facet_wrap(~patID, ncol = 2)
+
+ggsave(paste0(PATH_FIG_SEEDING_IDENTIFICATION, "LA_no_seeding_lesion_plot", ".svg"), plot=LA_seeding_lesion_identification_plot, width = 10, height = 10)
+```
+
+# Seeding vs. non-seeding de novo metastatic cancer
+```{r}
+DN_MS <-  c("M1RP_ID8_RP7", "M1RP_ID23_RP4", "M1RP_ID26_RP3", "M1RP_ID33_RP6")
+DN_LNS = c("M1RP_ID8_RP1", "M1RP_ID23_RP9", "M1RP_ID26_RP1", "M1RP_ID33_RP5")
+DN_NS = c("M1RP_ID8_RP1", "M1RP_ID8_RP8", "M1RP_ID8_RP4", "M1RP_ID23_RP9",
+          "M1RP_ID26_RP1", "M1RP_ID33_RP5", "M1RP_ID33_RP9")
+
+DN_info <- data.frame(sampleID = union(DN_MS, DN_LNS))
+DN_info$samplestatus <- ifelse(DN_info$sampleID %in% DN_MS, "S", "NS")
+rownames(DN_info) <- DN_info$sampleID
+DN_info$patID <-  sapply(rownames(DN_info), function(x) str_split(x, "_")[[1]][2])
+
+DN_MS_LNS = DN_counts[,c(DN_info$sampleID)]
+DN_MS_LNS_dds <- DESeqDataSetFromMatrix(countData=DN_MS_LNS,
+                                        colData=DN_info,
+                                        design=~samplestatus)
+keep <- filterByExpr(DN_MS_LNS_dds, group = DN_info$samplestatus)
+DN_MS_LNS_dds <- DN_MS_LNS_dds[keep,]
+DN_MS_LNS_dds <- DESeq(DN_MS_LNS_dds)
+
+DN_MS_LNS_res <- results(DN_MS_LNS_dds, contrast=c("samplestatus","S","NS"))
+DN_MS_LNS_res <- na.omit(DN_MS_LNS_res)
+write.csv(DN_MS_LNS_res, paste0(PATH_DESEQ2, "DN_MS_LNS_res", ".csv"))
+
+DN_MS_LNS_res_down <- DN_MS_LNS_res[(DN_MS_LNS_res$log2FoldChange <=-1)
+                                    &(DN_MS_LNS_res$padj<0.05),]
+DN_MS_LNS_res_up <- DN_MS_LNS_res[(DN_MS_LNS_res$log2FoldChange >= 1)
+                                  &(DN_MS_LNS_res$padj<0.05),]
+print(dim(DN_MS_LNS_res_down))
+print(dim(DN_MS_LNS_res_up))
+
+# Most vs. Least (DESeq2 - pairwise)
+DN_MS_LNS_P_dds <- DESeqDataSetFromMatrix(countData=DN_MS_LNS,
+                                          colData=DN_info,
+                                          design=~patID+samplestatus)
+keep <- filterByExpr(DN_MS_LNS_P_dds, group = DN_info$samplestatus)
+DN_MS_LNS_P_dds <- DN_MS_LNS_P_dds[keep,]
+DN_MS_LNS_P_dds <- DESeq(DN_MS_LNS_P_dds)
+
+DN_MS_LNS_P_res <- results(DN_MS_LNS_P_dds, contrast=c("samplestatus","S","NS"))
+DN_MS_LNS_P_res <- na.omit(DN_MS_LNS_P_res)
+write.csv(DN_MS_LNS_P_res, paste0(PATH_DESEQ2, "DN_MS_LNS_P_res", ".csv"))
+
+DN_MS_LNS_P_res_down <- DN_MS_LNS_P_res[(DN_MS_LNS_P_res$log2FoldChange <=-1)
+                                        &(DN_MS_LNS_P_res$padj<0.05),]
+DN_MS_LNS_P_res_up <- DN_MS_LNS_P_res[(DN_MS_LNS_P_res$log2FoldChange >= 1)
+                                      &(DN_MS_LNS_P_res$padj<0.05),]
+print(dim(DN_MS_LNS_P_res_down))
+print(dim(DN_MS_LNS_P_res_up))
+
+# # Most vs. rest (DESEq2)
+# DN_info <- data.frame(sampleID=union(DN_MS, DN_NS))
+# DN_info$samplestatus <- ifelse(DN_info$sample %in% DN_MS, "S", "NS")
+# rownames(DN_info) <- DN_info$sampleID
+# DN_info$patID <-  sapply(rownames(DN_info), function(x) str_split(x, "_")[[1]][2])
+# 
+# DN_MS_NS = DN_counts[,c(DN_info$sampleID)]
+# 
+# DN_MS_NS_dds <- DESeqDataSetFromMatrix(countData=DN_MS_NS,
+#                                        colData=DN_info,
+#                                        design=~samplestatus)
+# keep <- filterByExpr(DN_MS_NS_dds, group = DN_info$samplestatu)
+# DN_MS_NS_dds <- DN_MS_NS_dds[keep,]
+# DN_MS_NS_dds <- DESeq(DN_MS_NS_dds)
+# 
+# DN_MS_NS_res <- results(DN_MS_NS_dds, contrast=c("samplestatus","S","NS"))
+# DN_MS_NS_res <- na.omit(DN_MS_NS_res)
+# 
+# DN_MS_NS_res_down <- DN_MS_NS_res[(DN_MS_NS_res$log2FoldChange <=-1)
+#                                   &(DN_MS_NS_res$padj<0.01),]
+# DN_MS_NS_res_up <- DN_MS_NS_res[(DN_MS_NS_res$log2FoldChange >= 1)
+#                                 &(DN_MS_NS_res$padj<0.01),]
+# print(dim(DN_MS_NS_res_down))
+# print(dim(DN_MS_NS_res_up))
+# 
+# # Most vs. rest (DESeq2 - pairwise)
+# DN_MS_NS_P_dds <- DESeqDataSetFromMatrix(countData=DN_MS_NS,
+#                                          colData=DN_info, 
+#                                          design=~patID+samplestatus)
+# keep <- filterByExpr(DN_MS_NS_P_dds, group = DN_info$samplestatu)
+# DN_MS_NS_P_dds <- DN_MS_NS_P_dds[keep,]
+# DN_MS_NS_P_dds <- DESeq(DN_MS_NS_P_dds)
+# 
+# DN_MS_NS_P_res <- results(DN_MS_NS_P_dds, contrast=c("samplestatus","S","NS"))
+# DN_MS_NS_P_res <- na.omit(DN_MS_NS_P_res)
+# 
+# DN_MS_NS_P_res_down <- DN_MS_NS_P_res[(DN_MS_NS_P_res$log2FoldChange <=-1)
+#                                       &(DN_MS_NS_P_res$padj<0.01),]
+# DN_MS_NS_P_res_up <- DN_MS_NS_P_res[(DN_MS_NS_P_res$log2FoldChange >= 1)
+#                                     &(DN_MS_NS_P_res$padj<0.01),]
+# print(dim(DN_MS_NS_P_res_down))
+# print(dim(DN_MS_NS_P_res_up))
+```
+
+```{r}
+# Most vs. Least (DESeq2) 1 vs. 1
+LA_MS = c("HR_ID1_RP3", "HR_ID3_RP1", "HR_ID4_RP2", "HR_ID5_RP1", "HR_ID6_RP2", 
+       "HR_ID7_RP4", "HR_ID9_RP1", "HR_ID10_RP3", "HR_ID11_RP4", "HR_ID15_RP5",
+       "HR_ID17_RP6", "HR_ID18_RP5")
+LA_LNS = c("HR_ID1_RP5", "HR_ID3_RP3", "HR_ID4_RP5", "HR_ID5_RP3", "HR_ID6_RP5",
+        "HR_ID7_RP5", "HR_ID9_RP4", "HR_ID10_RP1", "HR_ID11_RP1", "HR_ID15_RP4",
+        "HR_ID17_RP4", "HR_ID18_RP4")
+LA_S = c("HR_ID1_RP3", "HR_ID1_RP4", "HR_ID3_RP1", "HR_ID4_RP2", 
+      "HR_ID5_RP1", "HR_ID5_RP2", "HR_ID6_RP2", "HR_ID6_RP4", 
+      "HR_ID7_RP4", "HR_ID7_RP3", "HR_ID9_RP1", "HR_ID9_RP5", "HR_ID9_RP2", 
+      "HR_ID10_RP3",  "HR_ID11_RP4", "HR_ID11_RP5", "HR_ID11_RP2", 
+      "HR_ID15_RP5", "HR_ID17_RP6", "HR_ID17_RP1", "HR_ID18_RP5")
+LA_NS = c("HR_ID1_RP5", "HR_ID1_RP1", "HR_ID1_RP2", 
+       "HR_ID3_RP3", "HR_ID3_RP4", "HR_ID3_RP2", "HR_ID3_RP5",
+       "HR_ID4_RP5", "HR_ID4_RP1", "HR_ID4_RP3", "HR_ID4_RP4",
+       "HR_ID5_RP3", "HR_ID5_RP4", "HR_ID6_RP5", "HR_ID6_RP1", "HR_ID6_RP3", 
+       "HR_ID7_RP5", "HR_ID7_RP1", "HR_ID7_RP6", "HR_ID7_RP2", "HR_ID9_RP4", "HR_ID9_RP3",
+       "HR_ID10_RP1", "HR_ID10_RP2", "HR_ID10_RP6", "HR_ID10_RP5","HR_ID10_RP4",
+       "HR_ID11_RP1", "HR_ID11_RP3",
+       "HR_ID15_RP4", "HR_ID15_RP2", "HR_ID15_RP1", "HR_ID15_RP3", 
+       "HR_ID17_RP4", "HR_ID17_RP5", "HR_ID17_RP3", "HR_ID17_RP2",
+       "HR_ID18_RP4", "HR_ID18_RP3", "HR_ID18_RP1", "HR_ID18_RP2")
+
+LA_info <- data.frame(sampleID = union(LA_MS, LA_LNS))
+LA_info$samplestatus <- ifelse(LA_info$sampleID %in% LA_MS, "S", "NS")
+rownames(LA_info) <- LA_info$sampleID
+LA_info$patID <-sapply(rownames(LA_info), function(x) str_split(x, "_")[[1]][2])
+LA_subset = LA_counts[,c(LA_info$sampleID)]
+
+LA_MS_LNS_dds <- DESeqDataSetFromMatrix(countData=LA_subset,
+                                        colData=LA_info, 
+                                        design=~samplestatus)
+keep <- filterByExpr(LA_MS_LNS_dds, group=LA_info$samplestatus)
+LA_MS_LNS_dds <- LA_MS_LNS_dds[keep,]
+LA_MS_LNS_dds <- DESeq(LA_MS_LNS_dds)
+
+LA_MS_LNS_res <- results(LA_MS_LNS_dds, contrast=c("samplestatus","S","NS"))
+LA_MS_LNS_res <- na.omit(LA_MS_LNS_res)
+write.csv(LA_MS_LNS_res, paste0(PATH_DESEQ2, "LA_MS_LNS_res", ".csv"))
+
+LA_MS_LNS_res_down <- LA_MS_LNS_res[(LA_MS_LNS_res$log2FoldChange <=-1)
+                                    &(LA_MS_LNS_res$padj<0.01),]
+LA_MS_LNS_res_up <- LA_MS_LNS_res[(LA_MS_LNS_res$log2FoldChange >= 1)
+                                  &(LA_MS_LNS_res$padj<0.01),]
+print(dim(LA_MS_LNS_res_down))
+print(dim(LA_MS_LNS_res_up))
+
+
+LA_MS_LNS_P_dds <- DESeqDataSetFromMatrix(countData=LA_subset,
+                                        colData=LA_info, 
+                                        design=~patID+samplestatus)
+keep <- filterByExpr(LA_MS_LNS_P_dds, group=LA_info$samplestatus)
+LA_MS_LNS_P_dds <- LA_MS_LNS_P_dds[keep,]
+LA_MS_LNS_P_dds <- DESeq(LA_MS_LNS_P_dds)
+
+LA_MS_LNS_P_res <- results(LA_MS_LNS_P_dds, contrast=c("samplestatus","S","NS"))
+LA_MS_LNS_P_res <- na.omit(LA_MS_LNS_P_res)
+write.csv(LA_MS_LNS_P_res, paste0(PATH_DESEQ2, "LA_MS_LNS_P_res", ".csv"))
+
+LA_MS_LNS_P_res_down <- LA_MS_LNS_P_res[(LA_MS_LNS_P_res$log2FoldChange <=-1)
+                                    &(LA_MS_LNS_P_res$padj<0.01),]
+LA_MS_LNS_P_res_up <- LA_MS_LNS_P_res[(LA_MS_LNS_P_res$log2FoldChange >= 1)
+                                  &(LA_MS_LNS_P_res$padj<0.01),]
+print(dim(LA_MS_LNS_P_res_down))
+print(dim(LA_MS_LNS_P_res_up))
+
+# LA_info <- data.frame(sampleID = union(LA_S, LA_NS))
+# LA_info$samplestatus <- ifelse(LA_info$sampleID %in% LA_S, "S", "NS")
+# rownames(LA_info) <- LA_info$sampleID
+# LA_info$patID <-sapply(rownames(LA_info), function(x) str_split(x, "_")[[1]][2])
+# LA_subset = LA_counts[,c(LA_info$sampleID)]
+# 
+# LA_S_NS_dds <- DESeqDataSetFromMatrix(countData=LA_subset,
+#                                         colData=LA_info, 
+#                                         design=~samplestatus)
+# keep <- filterByExpr(LA_S_NS_dds, group=LA_info$samplestatus)
+# LA_S_NS_dds <- LA_S_NS_dds[keep,]
+# LA_S_NS_dds <- DESeq(LA_S_NS_dds)
+# 
+# LA_S_NS_res <- results(LA_S_NS_dds, contrast=c("samplestatus","S","NS"))
+# LA_S_NS_res <- na.omit(LA_S_NS_res)
+# LA_S_NS_res_down <- LA_S_NS_res[(LA_S_NS_res$log2FoldChange <=-1)
+#                                     &(LA_S_NS_res$padj<0.01),]
+# LA_S_NS_res_up <- LA_S_NS_res[(LA_S_NS_res$log2FoldChange >= 1)
+#                                   &(LA_S_NS_res$padj<0.01),]
+# print(dim(LA_S_NS_res_down))
+# print(dim(LA_S_NS_res_up))
+# 
+# LA_S_NS_P_dds <- DESeqDataSetFromMatrix(countData=LA_subset,
+#                                         colData=LA_info, 
+#                                         design=~patID+samplestatus)
+# keep <- filterByExpr(LA_S_NS_P_dds, group=LA_info$samplestatus)
+# LA_S_NS_P_dds <- LA_S_NS_P_dds[keep,]
+# LA_S_NS_P_dds <- DESeq(LA_S_NS_P_dds)
+# 
+# LA_S_NS_P_res <- results(LA_S_NS_P_dds, contrast=c("samplestatus","S","NS"))
+# LA_S_NS_P_res <- na.omit(LA_S_NS_P_res)
+# LA_S_NS_P_res_down <- LA_S_NS_P_res[(LA_S_NS_P_res$log2FoldChange <=-1)
+#                                     &(LA_S_NS_P_res$padj<0.01),]
+# LA_S_NS_P_res_up <- LA_S_NS_P_res[(LA_S_NS_P_res$log2FoldChange >= 1)
+#                                   &(LA_S_NS_P_res$padj<0.01),]
+# print(dim(LA_S_NS_P_res_down))
+# print(dim(LA_S_NS_P_res_up))
+```
+
+```{r}
+LA_down = LA_MS_LNS_P_res[(LA_MS_LNS_P_res$log2FoldChange<=-1)&(LA_MS_LNS_P_res$padj<0.05),]
+LA_up = LA_MS_LNS_P_res[(LA_MS_LNS_P_res$log2FoldChange>=1)&(LA_MS_LNS_P_res$padj<0.05),]
+
+DN_down = DN_MS_LNS_P_res[(DN_MS_LNS_P_res$log2FoldChange<=-1)&(DN_MS_LNS_P_res$padj<0.05),]
+DN_up = DN_MS_LNS_P_res[(DN_MS_LNS_P_res$log2FoldChange>=1)&(DN_MS_LNS_P_res$padj<0.05),]
+
+common_down = intersect(rownames(LA_down), rownames(DN_down))
+common_up = intersect(rownames(LA_up), rownames(DN_up))
+
+print(length(common_down))
+print(common_down)
+print(length(common_up))
+print(common_up)
+
+LA_down_strict = LA_MS_LNS_P_res[(LA_MS_LNS_P_res$log2FoldChange<=-2)&(LA_MS_LNS_P_res$padj<0.001),]
+LA_up_strict = LA_MS_LNS_P_res[(LA_MS_LNS_P_res$log2FoldChange>=2)&(LA_MS_LNS_P_res$padj<0.001),]
+
+print(length(setdiff(rownames(LA_down_strict), common_down)))
+print(length(setdiff(rownames(LA_up_strict), common_up)))
+
+DN_down_strict = DN_MS_LNS_P_res[(DN_MS_LNS_P_res$log2FoldChange<=-2)&(DN_MS_LNS_P_res$padj<0.001),]
+DN_up_strict = DN_MS_LNS_P_res[(DN_MS_LNS_P_res$log2FoldChange>=2)&(DN_MS_LNS_P_res$padj<0.001),]
+
+print(length(setdiff(rownames(DN_down_strict), common_down)))
+print(length(setdiff(rownames(DN_up_strict), common_up)))
+
+strict_down = union(rownames(LA_down_strict), rownames(DN_down_strict)) 
+strict_up = union(rownames(LA_up_strict), rownames(DN_up_strict)) 
+
+print(length(strict_down))
+print(length(strict_up))
+
+signature_down = union(common_down, strict_down)
+signature_up = union(common_up, strict_up)
+length(signature_down)
+length(signature_up)
+signature = union(signature_down, signature_up)
+length(signature)
+
+aggressive_signature_df <- data.frame(Genes = signature)
+write.csv(aggressive_signature_df, paste0(PATH_SIGNATURE, "aggressive_signature", ".csv"), row.names = F)
+
+write.csv(signature, paste0(PATH_SIGNATURE, "aggressive_signature", ".csv"), row.names = FALSE)
+
+df <- data.frame(Gene = signature)
+df$DU <- ifelse(df$Gene %in% signature_down, "Down", "Up")
+write.csv(df, paste0(PATH_SIGNATURE, "aggressive_signature_DU", ".csv"), row.names = FALSE)
+```
+```{r}
+decipher = c('LASP1', 'IQGQP3', 'NFIB', 'S1PR4', 'THBS2', 'ANO7', 'PCDH7', 'MYBPC1', 
+             'EPPK1', 'TSBP', 'PBX1', 'NUSAP1', 'ZWILCH', 'UBE2C', 'CAMK2N1', 'RABGAP1', 
+             'PCAT-32', 'GLYATL1P4', 'PCAT-80', 'TNFRS19')
+intersect(signature, decipher)
+
+PCS1 = c("STMN1", "MCM4", "CCNB1", "CDC6", "CDKN3", "EZH2", "TPX2", 
+         "FOXM1", "KIF11", "HMMR", "MKI67", "KNTC1")
+
+intersect(signature, PCS1)
+intersect(rownames(Luminal_dev_markers_all), PCS1)
+#length(intersect(signature, progression_signature))
+```
+# TCGA data processing
+```{r}
+# Expression 
+tcga <- read.csv("/home/bioit/ldschaet/Desktop/Paper3/Data/Public_cohorts/TCGA/TCGA-PRAD.htseq_counts_nd.tsv.gz", sep="\t", row.names = 1)
+dim(tcga)
+
+# RP vs. NL
+sample = read.csv("/home/bioit/ldschaet/Desktop/Paper3/Data/Public_cohorts/TCGA/clinical/biospecimen.project-TCGA-PRAD.2021-11-17/sample.tsv", sep="\t")
+sample = sample[,c("sample_submitter_id", "sample_type")]
+sample = unique(sample$sample_submitter_id[sample$sample_type=="Primary Tumor"])
+sample = gsub("-", '.', sample)
+
+tcga = tcga[,colnames(tcga)[colnames(tcga) %in% sample]]
+write.csv(tcga, paste0(PATH_FIGSHARE, "tcga_counts_N1_N0", ".csv"))
+
+# LN status
+status = read.csv("/home/bioit/ldschaet/Desktop/TCGA_clinical.csv")
+status = status[, c('case_submitter_id', 'ajcc_pathologic_n')]
+colnames(status) = c("patID", "LNstatus")
+status = status[status$LNstatus!="'--",]
+status = distinct(status)
+
+# Progression free survival
+endpoint <- "PFI"
+clinical <- read.csv("/home/bioit/ldschaet/Downloads/RE__Scripts/updated_clinical_endpoints.csv", row.names = 1)
+clinical <- clinical[c('bcr_patient_barcode', endpoint, paste0(endpoint,".time"))]
+colnames(clinical) <- c("patID", "endpoint", "endpoint.time")
+clinical = distinct(clinical)
+
+# Combine
+tcga_info = data.frame(colnames(tcga))
+colnames(tcga_info) <- "sampleID"
+tcga_info["patID"]<- substr(tcga_info$sampleID, 1, nchar(tcga_info$sampleID) - 4)
+tcga_info$patID <- gsub("\\.", "-", tcga_info$patID)
+
+status = status[status$patID %in% tcga_info$patID,]
+clinical = clinical[clinical$patID %in% tcga_info$patID,]
+
+tcga_info <- left_join(tcga_info, status, by = "patID")
+tcga_info <- left_join(tcga_info, clinical, by = "patID")
+tcga_info$LNstatus[is.na(tcga_info$LNstatus)] <- "NA"
+
+tcga_info$endpoint <- as.numeric(tcga_info$endpoint)
+tcga_info$endpoint.time <- as.numeric(tcga_info$endpoint.time)
+
+write.csv(tcga_info, paste0(PATH_FIGSHARE, "tcga_RP_info", ".csv"))
+
+keep <- filterByExpr(tcga, min.prop = 0.1)
+tcga <- tcga[keep,]
+tcga <- tcga[apply(tcga, 1, var) >= 0.1,]
+tcga <- log2(tcga + 1)
+tcga <- as.data.frame(scale(tcga, center = colMeans(tcga), scale =  apply(tcga, 2, sd)))
+```
+# KM curves based on N1 and N0 status in TCGA
+```{r}
+# Keep only those for which the LN status is known
+info <- tcga_info[tcga_info$LNstatus!="NA",]
+write.csv(info, paste0(PATH_FIGSHARE, "SupplementaryFigure76_Data", ".csv"), row.names = FALSE)
+
+fit <- survfit(Surv(endpoint.time, endpoint) ~ LNstatus, data=info)
+clusters <- levels(as.factor(info$LNstatus))
+pval <- surv_pvalue(fit)$pval
+
+ggsurv <- ggsurvplot(fit, data = info, size = 1, palette = c("#E7B800", "#2E9FDF"), ylab = "PFI",
+                     conf.int = TRUE,pval = TRUE, risk.table = TRUE, 
+                     risk.table.col = "strata",censor.shape="|",legend.labs = c(clusters),  
+                     risk.table.height = 0.25,ggtheme = theme_bw())
+
+pdf(paste0(PATH_FIG_SURVIVAL, "TCGA_SC_N1_N0", ".pdf"), width = 6, height = 5)
+print(ggsurv, newpage = FALSE)
+dev.off()
+```
+
+# KM with signature 
+```{r}
+# 1. Cluster TCGA RP samples based on expression of genes in signature
+signature_TCGA <- intersect(signature, rownames(tcga))
+expr_df = tcga[signature_TCGA, tcga_info$sampleID]
+annot_df = data.frame(tcga_info$LNstatus)
+colnames(annot_df) <- 'LNstatus'
+rownames(annot_df) <- tcga_info$sampleID
+
+colours <- list('LNstatus' = c('N1' = '#FF0000', 'N0' = '#0000FF', 'NA' =  '#FFFFFF'))
+colAnn <- HeatmapAnnotation(df = annot_df,
+                            which = 'col',
+                            col = colours,
+                            annotation_width = unit(c(1, 4), 'cm'),
+                            gap = unit(1, 'mm'))
+
+hmap <- Heatmap(expr_df,  show_column_names = FALSE, show_row_names = FALSE, 
+                top_annotation=colAnn, cluster_columns = TRUE, cluster_rows = FALSE, column_km = 2)
+
+pdf(paste0(PATH_FIG_HEATMAPS, "TCGA_clusters_signature", ".pdf"), width = 8, height = 8)
+draw(hmap, heatmap_legend_side="left", annotation_legend_side="right")
+dev.off()
+
+column_order <- column_order(hmap)
+sampleIDs <- colnames(expr_df)
+cluster1 <- sampleIDs[column_order$`1`]
+cluster2 <- sampleIDs[column_order$`2`]
+
+cluster1_N1 <- cluster1[cluster1 %in% rownames(annot_df)[annot_df$LNstatus=="N1"]]
+cluster2_N1 <- cluster2[cluster2 %in% rownames(annot_df)[annot_df$LNstatus=="N1"]]
+
+ratio1 = length(cluster1_N1)/length(cluster1)
+ratio2 = length(cluster2_N1)/length(cluster2)
+
+if (ratio1>ratio2){
+  print(fisher.test(matrix(c(length(cluster1_N1), length(cluster1)-length(length(cluster1_N1)),
+                             length(cluster2_N1), length(cluster2)-length(cluster2_N1)), nrow=2), 
+                    alternative="greater"))
+  print("cluster1 contains a higher number of N1 sample")
+} else {
+  print(fisher.test(matrix(c(length(cluster2_N1), length(cluster2)-length(cluster2_N1),
+                             length(cluster1_N1), length(cluster1)-length(cluster1_N1)), nrow=2), 
+                    alternative="greater"))
+  print("cluster2 contains a higher number of N1 sample")
+}
+
+tcga_info$cluster <- ifelse(tcga_info$sampleID %in% cluster1, "C1", "C2")
+
+# 2. KM
+info <- tcga_info
+fit <- survfit(Surv(endpoint.time, endpoint) ~ cluster, data=info)
+clusters <- levels(as.factor(info$cluster))
+pval <- surv_pvalue(fit)$pval
+
+ggsurv <- ggsurvplot(fit, data = info, size = 1, ylab = "PFI", palette = c("#E7B800", "#2E9FDF"), 
+                     conf.int = TRUE, pval = TRUE, risk.table = TRUE, 
+                     risk.table.col = "strata",censor.shape="|", legend.labs = c(clusters),  
+                     risk.table.height = 0.25, ggtheme = theme_bw())
+
+pdf(paste0(PATH_FIG_SURVIVAL, "TCGA_SC_clusters_signature", ".pdf"), width = 6, height = 5)
+print(ggsurv, newpage = FALSE)
+dev.off()
+```
+
+# With a random signature
+```{r}
+set.seed(5)
+random_genes <- sample(rownames(tcga), length(signature_TCGA))
+expr_df = tcga[random_genes, tcga_info$sampleID]
+annot_df = data.frame(tcga_info$LNstatus)
+colnames(annot_df) <- 'LNstatus'
+rownames(annot_df) <- tcga_info$sampleID
+
+colours <- list('LNstatus' = c('N1' = '#FF0000', 'N0' = '#0000FF', 'NA' =  '#FFFFFF'))
+colAnn <- HeatmapAnnotation(df = annot_df,
+                            which = 'col',
+                            col = colours,
+                            annotation_width = unit(c(1, 4), 'cm'),
+                            gap = unit(1, 'mm'))
+
+hmap <- Heatmap(expr_df,  show_column_names = FALSE, show_row_names = FALSE, 
+                top_annotation=colAnn, cluster_columns = TRUE, cluster_rows = FALSE, column_km = 2)
+
+pdf(paste0(PATH_FIG_HEATMAPS, "TCGA_clusters_random_signature", ".pdf"), width = 8, height = 8)
+draw(hmap, heatmap_legend_side="left", annotation_legend_side="right")
+dev.off()
+
+column_order <- column_order(hmap)
+sampleIDs <- colnames(expr_df)
+cluster1 <- sampleIDs[column_order$`1`]
+cluster2 <- sampleIDs[column_order$`2`]
+
+cluster1_N1 <- cluster1[cluster1 %in% rownames(annot_df)[annot_df$LNstatus=="N1"]]
+cluster2_N1 <- cluster2[cluster2 %in% rownames(annot_df)[annot_df$LNstatus=="N1"]]
+
+ratio1 = length(cluster1_N1)/length(cluster1)
+ratio2 = length(cluster2_N1)/length(cluster2)
+
+if (ratio1>ratio2){
+  print(fisher.test(matrix(c(length(cluster1_N1), length(cluster1)-length(length(cluster1_N1)),
+                             length(cluster2_N1), length(cluster2)-length(cluster2_N1)), nrow=2), 
+                    alternative="greater"))
+  print("cluster1 contains a higher number of N1 sample")
+} else {
+  print(fisher.test(matrix(c(length(cluster2_N1), length(cluster2)-length(cluster2_N1),
+                             length(cluster1_N1), length(cluster1)-length(cluster1_N1)), nrow=2), 
+                    alternative="greater"))
+  print("cluster2 contains a higher number of N1 sample")
+}
+
+tcga_info$cluster <- ifelse(tcga_info$sampleID %in% cluster1, "C1", "C2")
+
+# 2. KM
+info <- tcga_info
+fit <- survfit(Surv(endpoint.time, endpoint) ~ cluster, data=info)
+clusters <- levels(as.factor(info$cluster))
+pval <- surv_pvalue(fit)$pval
+
+ggsurv <- ggsurvplot(fit, data = info, size = 1, ylab = "PFI", palette = c("#E7B800", "#2E9FDF"), 
+                     conf.int = TRUE, pval = TRUE, risk.table = TRUE, 
+                     risk.table.col = "strata",censor.shape="|", legend.labs = c(clusters),  
+                     risk.table.height = 0.25, ggtheme = theme_bw())
+
+pdf(paste0(PATH_FIG_SURVIVAL, "TCGA_SC_clusters_random_signature", ".pdf"), width = 6, height = 5)
+print(ggsurv, newpage = FALSE)
+dev.off()
+```
+
+# Pathway preprocessing
+```{r}
+LA_res <- LA_MS_LNS_P_res
+LA_res$SYMBOL <- rownames(LA_res)
+LA_res <- na.omit(LA_res)
+LA_res <- LA_res[,c("SYMBOL", "stat")]
+row.names(LA_res) <- NULL
+LA_ranks <- deframe(LA_res)
+
+DN_res <- DN_MS_LNS_P_res
+DN_res$SYMBOL <- rownames(DN_res)
+DN_res <- na.omit(DN_res)
+DN_res <- DN_res[,c("SYMBOL", "stat")]
+row.names(DN_res) <- NULL
+DN_ranks <- deframe(DN_res)
+```
+
+# GSEA 
+```{r}
+# Hallmarks 
+set.seed(1)
+pathways.hallmark <- gmtPathways("/home/bioit/ldschaet/Desktop/GSEA/h.all.v2023.2.Hs.symbols.gmt")
+
+# LA 
+LA_fgsea_res<- fgsea(pathways=pathways.hallmark, stats=LA_ranks, nperm=1000)
+LA_fgsea_res <- LA_fgsea_res %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+LA_fgsea_res %>% 
+  dplyr::select(-leadingEdge, -ES, -nMoreExtreme) %>% 
+  arrange(padj) 
+
+LA_fgsea_res <- data.frame(LA_fgsea_res)
+
+check_overlap <- function(leading_genes, signature_genes) {
+  return(intersect(leading_genes, signature_genes))
+}
+
+LA_fgsea_res$overlap <- sapply(LA_fgsea_res$leadingEdge, check_overlap,  signature_genes=signature)
+LA_fgsea_res$leadingEdge <- sapply(LA_fgsea_res$leadingEdge, function(x) paste(x, collapse = ","))
+LA_fgsea_res$overlap <- sapply(LA_fgsea_res$overlap, function(x) paste(x, collapse = ","))
+LA_fgsea_res <- LA_fgsea_res[,c("pathway", "padj", "ES","NES","size","leadingEdge","overlap")]
+write.table(LA_fgsea_res, paste0(PATH_GSEA, "LA_fgsea_res", ".tsv"), sep="\t", row.names = F)
+
+
+LA_gsea <- ggplot(LA_fgsea_res, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.05)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score") + 
+  theme_minimal()
+ggsave(paste0(PATH_FIG_GSEA, "LA_gsea", ".svg"), plot=LA_gsea , width = 8, height = 10)
+
+
+# DN 
+DN_fgsea_res<- fgsea(pathways=pathways.hallmark, stats=DN_ranks, nperm=1000)
+DN_fgsea_res <- DN_fgsea_res %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+DN_fgsea_res %>% 
+  dplyr::select(-leadingEdge, -ES, -nMoreExtreme) %>% 
+  arrange(padj) 
+
+DN_fgsea_res <- data.frame(DN_fgsea_res)
+
+DN_fgsea_res$overlap <- sapply(DN_fgsea_res$leadingEdge, check_overlap,  signature_genes=signature)
+DN_fgsea_res$leadingEdge <- sapply(DN_fgsea_res$leadingEdge, function(x) paste(x, collapse = ","))
+DN_fgsea_res$overlap <- sapply(DN_fgsea_res$overlap, function(x) paste(x, collapse = ","))
+DN_fgsea_res <- DN_fgsea_res[,c("pathway", "padj", "ES","NES","size","leadingEdge","overlap")]
+
+DN_gsea <- ggplot(DN_fgsea_res, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.05)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score") + 
+  theme_minimal()
+ggsave(paste0(PATH_FIG_GSEA, "DN_gsea", ".svg"), plot=DN_gsea , width = 8, height = 10)
+
+write.table(DN_fgsea_res, paste0(PATH_GSEA, "DN_fgsea_res", ".tsv"), sep="\t", row.names = F)
+```
+# Calculate the overlap
+```{r}
+LA_path_sign = LA_fgsea_res[LA_fgsea_res$padj<0.05,]
+DN_path_sign = DN_fgsea_res[DN_fgsea_res$padj<0.05,]
+
+dim(LA_path_sign)
+dim(DN_path_sign)
+
+LA_path_sign_up = LA_path_sign$pathway[LA_path_sign$NES>0]
+DN_path_sign_up = DN_path_sign$pathway[DN_path_sign$NES>0]
+
+LA_path_sign_down= LA_path_sign$pathway[LA_path_sign$NES<0]
+DN_path_sign_down= DN_path_sign$pathway[DN_path_sign$NES<0]
+
+intersect(LA_path_sign_up,DN_path_sign_up)
+intersect(LA_path_sign_down,DN_path_sign_down)
+```
+# Reload dataset if we run script from here only
+```{r}
+DN_counts <- read.table("/home/bioit/ldschaet/Desktop/NatureSubmission/Data/de_novo_counts_47.csv", header=T, row.name=1, sep=",")
+DN_counts <- subset(DN_counts, select = -M1RP_ID23_RP4)
+colnames(DN_counts) <- ifelse(colnames(DN_counts) != "M1RP_ID23_RP44",
+                              colnames(DN_counts), "M1RP_ID23_RP4") 
+
+LA_counts <- read.table("/home/bioit/ldschaet/Desktop/NatureSubmission/Data/locally_advanced_counts.csv", header=T, row.name=1, sep=",")
+colnames(LA_counts) <- ifelse(colnames(LA_counts) != "HR_ID5_MLNL", colnames(LA_counts), "HR_ID5_NL") #one sample was wrongly labeled
+
+# Expression 
+tcga <- read.csv("/home/bioit/ldschaet/Desktop/Paper3/Data/Public_cohorts/TCGA/TCGA-PRAD.htseq_counts_nd.tsv.gz", sep="\t", row.names = 1)
+dim(tcga)
+
+# RP vs. NL
+sample = read.csv("/home/bioit/ldschaet/Desktop/Paper3/Data/Public_cohorts/TCGA/clinical/biospecimen.project-TCGA-PRAD.2021-11-17/sample.tsv", sep="\t")
+sample = sample[,c("sample_submitter_id", "sample_type")]
+sample = unique(sample$sample_submitter_id[sample$sample_type=="Primary Tumor"])
+sample = gsub("-", '.', sample)
+
+tcga = tcga[,colnames(tcga)[colnames(tcga) %in% sample]]
+
+# LN status
+status = read.csv("/home/bioit/ldschaet/Desktop/TCGA_clinical.csv")
+status = status[, c('case_submitter_id', 'ajcc_pathologic_n')]
+colnames(status) = c("patID", "LNstatus")
+status = status[status$LNstatus!="'--",]
+status = distinct(status)
+
+# Progression free survival
+endpoint <- "PFI"
+clinical <- read.csv("/home/bioit/ldschaet/Downloads/RE__Scripts/updated_clinical_endpoints.csv", row.names = 1)
+clinical <- clinical[c('bcr_patient_barcode', endpoint, paste0(endpoint,".time"))]
+colnames(clinical) <- c("patID", "endpoint", "endpoint.time")
+clinical = distinct(clinical)
+
+# Combine
+tcga_info = data.frame(colnames(tcga))
+colnames(tcga_info) <- "sampleID"
+tcga_info["patID"]<- substr(tcga_info$sampleID, 1, nchar(tcga_info$sampleID) - 4)
+tcga_info$patID <- gsub("\\.", "-", tcga_info$patID)
+
+status = status[status$patID %in% tcga_info$patID,]
+clinical = clinical[clinical$patID %in% tcga_info$patID,]
+
+tcga_info <- left_join(tcga_info, status, by = "patID")
+tcga_info <- left_join(tcga_info, clinical, by = "patID")
+tcga_info$LNstatus[is.na(tcga_info$LNstatus)] <- "NA"
+
+tcga_info$endpoint <- as.numeric(tcga_info$endpoint)
+tcga_info$endpoint.time <- as.numeric(tcga_info$endpoint.time)
+
+keep <- filterByExpr(tcga, min.prop = 0.1)
+tcga <- tcga[keep,]
+tcga <- tcga[apply(tcga, 1, var) >= 0.1,]
+tcga <- log2(tcga + 1)
+tcga <- as.data.frame(scale(tcga, center = colMeans(tcga), scale =  apply(tcga, 2, sd)))
+```
+
+
+# Single cell validation
+```{r}
+chen <- readRDS("/home/bioit/ldschaet/Desktop/NatureSubmission/Data/chenSeuratObj.rds")
+cellannot <- read.csv("/home/bioit/ldschaet/Desktop/NatureSubmission/Data/cell_annotation.csv")
+cellannot["type"][cellannot["type"]=="Monolytic"] <- "Monocytic"
+cellannot["type"][cellannot["type"]=="B cel"] <- "B"
+cellannot["celltype"] = cellannot["type"]
+cellannot["celltype"][cellannot["celltype"]=="Cell Cycle"] <- "Luminal"
+chen$sampleID <- cellannot$sampleID
+chen$celltype <- cellannot$celltype
+print(unique(chen$celltype))
+chen$status <- cellannot$status
+Idents(chen) <- chen@meta.data$celltype
+chen <- subset(chen, subset = celltype != "unknown")
+chen_info <- chen@meta.data
+sorted_idents <- c("Luminal", "Basal/Intermediate", 'Fibroblast', 'Endothelial', 'Monocytic', 'Mast', 'T','B')
+Idents(chen) <- factor(x =Idents(chen), levels = sorted_idents)
+chen_norm <- NormalizeData(chen)
+chen_primaries <- subset(chen_norm, subset = sampleID != "SC172")
+chen_primaries_info <- chen_primaries@meta.data
+```
+
+```{r}
+plot <- DimPlot(chen_primaries)
+ggsave(paste0(PATH_FIG_SC, "chen_all_RP", ".svg"), plot=plot , width = 10, height = 5)
+write.csv(chen_primaries@reductions$umap@cell.embeddings, paste0(PATH_FIGSHARE, "chen_RP_umap", ".csv"))
+```
+
+```{r}
+signature_info <- read.csv("/home/bioit/ldschaet/Desktop/NatureSubmission/Results/Signatures/aggressive_signature_DU.csv")
+signature <- signature_info$Gene
+signature_down <-  signature_info$Genes[signature_info$DU=="Down"]
+signature_up <- signature_info$Genes[signature_info$DU=="Up"]
+signature_chen <- intersect(signature, rownames(chen_primaries))
+```
+
+
+# Markers of specific cells
+```{r}
+print(length(signature_chen))
+
+for (cellname in c("Luminal", "Basal/Intermediate", "Fibroblast", "Endothelial", 
+                   "Mast", "Monocytic", "T", "B")){
+  cells <- rownames(chen_primaries_info[which(chen_primaries_info$celltype == cellname), ])
+  markers  <- FindMarkers(chen_primaries, ident.1=cells, 
+                          features=signature_chen, 
+                          logfc.threshold=0, 
+                          min.pct=0,
+                          min.cells.group=1,
+                          only.pos=TRUE, 
+                          group.by = )
+  sign_markers <- markers[which(markers$p_val_adj<0.05),]
+  print(cellname)
+  print(sign_markers)
+  DotPlot(chen_primaries, features=rownames(sign_markers)) + RotatedAxis() + coord_flip()
+  if (cellname == "Basal/Intermediate"){
+    cellname="Basal"
+  }
+  write.csv(sign_markers, paste0("/home/bioit/ldschaet/Desktop/NatureSubmission/Tables/Markers_", cellname, ".csv"),        row.names=TRUE)
+}
+```
+
+
+#### LUMINAL CELLS ####
+```{r}
+RP_Luminal_sign <- subset(chen_primaries, subset = celltype=="Luminal",  features = signature_chen)
+RP_Luminal_sign <- FindVariableFeatures(RP_Luminal_sign, selection.method = "vst")
+RP_Luminal_sign <- ScaleData(RP_Luminal_sign)
+RP_Luminal_sign <- RunPCA(RP_Luminal_sign, features = VariableFeatures(RP_Luminal_sign))
+
+std <- Stdev(RP_Luminal_sign, reduction = "pca")
+var <- std^2
+PC_1 <- round(var[1]/sum(var),4)
+PC_2 <- round(var[2]/sum(var),4)
+PC_1 <- paste("PC1", PC_1*100, "%")
+PC_2 <- paste("PC2", PC_2*100, "%")
+
+Luminal_pca_loadings_sign <- Loadings(object = RP_Luminal_sign, reduction = "pca")
+Luminal_pca_embeddings_sign <- data.frame(Embeddings(object = RP_Luminal_sign, reduction = "pca"))
+
+write.csv(Luminal_pca_loadings_sign[,c("PC_1", "PC_2")], paste0(PATH_FIGSHARE, "Figure4right_Data", ".csv"))
+write.csv(Luminal_pca_embeddings_sign[, c("PC_1", "PC_2")], paste0(PATH_FIGSHARE, "Figure4left_Data", ".csv"))
+
+Luminal_dev <- rownames(Luminal_pca_embeddings_sign[Luminal_pca_embeddings_sign$PC_1>=3,])
+print(length(Luminal_dev))
+plot1 <- DimPlot(RP_Luminal_sign, cells.highlight = Luminal_dev,  reduction = "pca", cols="black")+labs(y=PC_2, x=PC_1)+ scale_color_manual(labels = c("Luminal", "Luminal_dev"), values = c("gray", "black"))+theme(legend.position = "bottom")
+plot2 <- VizDimLoadings(RP_Luminal_sign, dims = 1, reduction = "pca")+xlim(c(0.10, 0.25))
+g <- grid.arrange(plot1, plot2, ncol=2, widths=c(1.1,0.9))
+ggsave(paste0(PATH_FIG_SCMARKERS, "SC_Luminal", ".svg"), plot=g , width = 10, height = 5)
+```
+
+```{r}
+set.seed(30)
+random_signature <- sample(rownames(chen_primaries), length(signature_chen))
+RP_Luminal_random_sign <- subset(chen_primaries, subset = celltype=="Luminal",features = random_signature)
+RP_Luminal_random_sign <- FindVariableFeatures(RP_Luminal_random_sign, selection.method = "vst")
+RP_Luminal_random_sign <- ScaleData(RP_Luminal_random_sign)
+RP_Luminal_random_sign <- RunPCA(RP_Luminal_random_sign, features = VariableFeatures(RP_Luminal_random_sign))
+
+std <- Stdev(RP_Luminal_random_sign, reduction = "pca")
+var <- std^2
+PC_1 <- round(var[1]/sum(var),4)
+PC_2 <- round(var[2]/sum(var),4)
+PC_1 <- paste("PC1", PC_1*100, "%")
+PC_2 <- paste("PC2", PC_2*100, "%")
+
+Luminal_pca_loadings_random_sign <- Loadings(object = RP_Luminal_random_sign, reduction = "pca")
+Luminal_pca_embeddings_random_sign <- data.frame(Embeddings(object = RP_Luminal_random_sign, reduction = "pca"))
+
+write.csv(Luminal_pca_embeddings_random_sign[, c("PC_1", "PC_2")], paste0(PATH_FIGSHARE, "SupplementaryFigure71left_Data", ".csv"))
+
+plot1 <- DimPlot(RP_Luminal_random_sign, cells.highlight = Luminal_dev,  reduction = "pca", cols="black")+labs(y=PC_2, x=PC_1)+ scale_color_manual(labels = c("Luminal", "Luminal_dev"), values = c("gray", "black"))+theme(legend.position = "bottom")
+
+RP_Luminal_all_genes <- subset(chen_primaries, subset = celltype=="Luminal")
+RP_Luminal_all_genes <- FindVariableFeatures(RP_Luminal_all_genes, selection.method = "vst")
+RP_Luminal_all_genes <- ScaleData(RP_Luminal_all_genes)
+RP_Luminal_all_genes <- RunPCA(RP_Luminal_all_genes, features = VariableFeatures(RP_Luminal_all_genes))
+
+std <- Stdev(RP_Luminal_all_genes, reduction = "pca")
+var <- std^2
+PC_1 <- round(var[1]/sum(var),4)
+PC_2 <- round(var[2]/sum(var),4)
+PC_1 <- paste("PC1", PC_1*100, "%")
+PC_2 <- paste("PC2", PC_2*100, "%")
+
+Luminal_pca_loadings_all_genes <- Loadings(object = RP_Luminal_all_genes, reduction = "pca")
+Luminal_pca_embeddings_all_genes <- data.frame(Embeddings(object = RP_Luminal_all_genes, reduction = "pca"))
+
+write.csv(Luminal_pca_embeddings_all_genes[, c("PC_1", "PC_2")], paste0(PATH_FIGSHARE, "SupplementaryFigure71right_Data", ".csv"))
+
+plot2 <- DimPlot(RP_Luminal_all_genes, cells.highlight = Luminal_dev,  reduction = "pca", cols="black")+labs(y=PC_2, x=PC_1)+ scale_color_manual(labels = c("Luminal", "Luminal_dev"), values = c("gray", "black"))+theme(legend.position = "bottom")
+g <- grid.arrange(plot1, plot2, ncol=2, widths=c(1,1))
+ggsave(paste0(PATH_FIG_SCMARKERS, "SC_Luminal_random_all", ".svg"), plot=g , width = 10, height = 5)
+```
+
+
+```{r}
+RP_luminal <- subset(chen_primaries, subset = celltype=="Luminal")
+Luminal_dev_markers_sign <- FindMarkers(RP_luminal, ident.1 = Luminal_dev, features = signature_chen, only.pos=TRUE)
+Luminal_dev_markers_sign <- Luminal_dev_markers_sign[Luminal_dev_markers_sign$p_val_adj<0.05,]
+Luminal_dev_markers_all <- FindMarkers(RP_luminal, ident.1 = Luminal_dev, only.pos=TRUE)
+Luminal_dev_markers_all <- Luminal_dev_markers_all[Luminal_dev_markers_all$p_val_adj<0.05,]
+Luminal_dev_markers_all["sign"] <- ifelse(rownames(Luminal_dev_markers_all)%in%signature_chen, TRUE, FALSE)
+dim(Luminal_dev_markers_sign)
+dim(Luminal_dev_markers_all)
+write.table(Luminal_dev_markers_all, paste0(PATH_DESEQ2, "Luminal_dev_findmarkers_all", ".tsv"), sep="\t", row.names = T)
+```
+
+```{r}
+set.seed(3)
+Luminal_res = Luminal_dev_markers_all
+Luminal_res$gene = rownames(Luminal_res)
+Luminal_res <- Luminal_res[,c("gene", "avg_log2FC")]
+row.names(Luminal_res) <- NULL
+Luminal_ranks <- deframe(Luminal_res)
+
+pathways.hallmark <- gmtPathways("/home/bioit/ldschaet/Desktop/GSEA/h.all.v2023.2.Hs.symbols.gmt")
+Luminal_markers_fgsea_res<- fgsea(pathways=pathways.hallmark, stats=Luminal_ranks, nperm=1000)
+Luminal_markers_fgsea_res <- Luminal_markers_fgsea_res %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+Luminal_markers_fgsea_res %>% 
+  dplyr::select(-leadingEdge, -ES, -nMoreExtreme) %>% 
+  arrange(padj) 
+
+Luminal_markers_fgsea_res <- data.frame(Luminal_markers_fgsea_res)
+
+check_overlap <- function(leading_genes, signature_genes) {
+  return(intersect(leading_genes, signature_genes))
+}
+
+Luminal_markers_fgsea_res$overlap <- sapply(Luminal_markers_fgsea_res$leadingEdge, check_overlap,  signature_genes=signature)
+Luminal_markers_fgsea_res$leadingEdge <- sapply(Luminal_markers_fgsea_res$leadingEdge, function(x) paste(x, collapse = ","))
+Luminal_markers_fgsea_res$overlap <- sapply(Luminal_markers_fgsea_res$overlap, function(x) paste(x, collapse = ","))
+Luminal_markers_fgsea_res <- Luminal_markers_fgsea_res[,c("pathway", "padj", "ES","NES","size","leadingEdge","overlap")]
+write.table(Luminal_markers_fgsea_res, paste0(PATH_GSEA, "Luminal_markers_fgsea_res_all", ".tsv"), sep="\t", row.names = F)
+
+Luminal_gsea <- ggplot(Luminal_markers_fgsea_res, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.05)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score") + 
+  theme_minimal()
+ggsave(paste0(PATH_FIG_GSEA, "Luminal_gsea_all", ".svg"), plot=Luminal_gsea , width = 8, height = 10)
+```
+
+```{r}
+set.seed(3)
+Luminal_res = Luminal_dev_markers_sign
+Luminal_res$gene = rownames(Luminal_res)
+Luminal_res <- Luminal_res[,c("gene", "avg_log2FC")]
+row.names(Luminal_res) <- NULL
+Luminal_ranks <- deframe(Luminal_res)
+
+Luminal_markers_fgsea_res<- fgsea(pathways=pathways.hallmark, stats=Luminal_ranks, nperm=1000)
+Luminal_markers_fgsea_res <- Luminal_markers_fgsea_res %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+Luminal_markers_fgsea_res %>% 
+  dplyr::select(-leadingEdge, -ES, -nMoreExtreme) %>% 
+  arrange(padj) 
+
+Luminal_markers_fgsea_res <- data.frame(Luminal_markers_fgsea_res)
+
+check_overlap <- function(leading_genes, signature_genes) {
+  return(intersect(leading_genes, signature_genes))
+}
+
+Luminal_markers_fgsea_res$overlap <- sapply(Luminal_markers_fgsea_res$leadingEdge, check_overlap,  signature_genes=signature)
+Luminal_markers_fgsea_res$leadingEdge <- sapply(Luminal_markers_fgsea_res$leadingEdge, function(x) paste(x, collapse = ","))
+Luminal_markers_fgsea_res$overlap <- sapply(Luminal_markers_fgsea_res$overlap, function(x) paste(x, collapse = ","))
+Luminal_markers_fgsea_res <- Luminal_markers_fgsea_res[,c("pathway", "padj", "ES","NES","size","leadingEdge","overlap")]
+write.table(Luminal_markers_fgsea_res, paste0(PATH_GSEA, "Luminal_markers_fgsea_res_sign", ".tsv"), sep="\t", row.names = F)
+
+Luminal_gsea <- ggplot(Luminal_markers_fgsea_res, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.05)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score") + 
+  theme_minimal()
+ggsave(paste0(PATH_FIG_GSEA, "Luminal_gsea_sign", ".svg"), plot=Luminal_gsea , width = 8, height = 10)
+```
+
+```{r}
+chen_RP_Luminal_dev <- chen_primaries
+chen_RP_Luminal_dev$cell.type <- ifelse(colnames(chen_RP_Luminal_dev) %in% Luminal_dev, "Luminal_dev", chen_RP_Luminal_dev$celltype)
+Idents(chen_RP_Luminal_dev) = chen_RP_Luminal_dev$cell.type
+sorted_idents <- c("Luminal", "Luminal_dev", "Basal/Intermediate", 'Fibroblast',  'Endothelial', 'Monocytic', 'Mast', 'T','B')
+Idents(chen_RP_Luminal_dev) <- factor(x =Idents(chen_RP_Luminal_dev), levels = sorted_idents)
+g <- DotPlot(chen_RP_Luminal_dev, features = rownames(Luminal_dev_markers_sign[order(Luminal_dev_markers_sign$avg_log2FC),]))+ RotatedAxis() + coord_flip()
+ggsave(paste0(PATH_FIG_DOTPLOT, "Luminal_dotplot", ".svg"), plot=g , width = 6, height = 8)
+```
+
+```{r}
+RP_luminal_annot = RP_luminal@meta.data
+table(RP_luminal_annot$status[rownames(RP_luminal_annot)%in%Luminal_dev])
+table(RP_luminal_annot$status[!rownames(RP_luminal_annot)%in%Luminal_dev])
+
+fisher.test(matrix(c(386, 12820, 19, 1248), nrow=2), alternative='greater')
+```
+# Heatmap with Jef annotation
+```{r}
+signature_df = data.frame(gene = signature)
+signature_df$down = signature %in% signature_down
+signature_df$up = signature %in% signature_up
+signature_df$total = rowSums(signature_df[c('down', 'up')])
+signature_df$color <- ifelse(signature_df$down, "blue", "red")
+rownames(signature_df) <- signature
+table(signature_df$total)
+```
+```{r}
+Luminal_Jef<- readRDS("/home/bioit/ldschaet/Desktop/Paper3/SC_analysis/231005_seuratObj_chen_luminal_no_metastatic.rds")
+Luminal_info <- Luminal_Jef@meta.data
+table(Luminal_info[rownames(Luminal_info)%in%Luminal_dev,]$cell.type.jef.L3)
+
+table(Luminal_info$cell.type.jef.L3)
+
+table(Luminal_info[rownames(Luminal_info)%in%Luminal_dev,]$chenCluster)
+length(Luminal_dev)
+```
+```{r}
+# Rename the status column 
+status <- as.character(Luminal_Jef@meta.data$status)
+status[status=="malignant"] <- "cancerous"
+status[status=="non-malignant"] <- "non-cancerous"
+```
+
+
+# Heatmap Luminal cell expression, markers of deviating cells from our signature and literature markers
+```{r}
+Luminal_Jef_info <- Luminal_Jef@meta.data
+Luminal_Jef$cell.type <- ifelse(rownames(Luminal_info) %in% Luminal_dev, "Luminal_dev", "Luminal")
+Luminal_Jef$cell.type <- factor(Luminal_Jef$cell.
+                                type)
+Idents(Luminal_Jef) <-Luminal_Jef$cell.type 
+Luminal_Jef$cell.subtype <- Luminal_Jef_info$cell.type.jef.L3
+Luminal_Jef$cell.status <- factor(status)
+
+Luminal_Jef <- subset(Luminal_Jef, subset = cell.subtype %in% c("Luminal", "Luminal (Proliferating)", 
+                                                                "Luminal (Ribo, translation)"))
+Luminal_Jef$cell.subtype <- factor(Luminal_Jef$cell.subtype, levels = c("Luminal", "Luminal (Ribo, translation)","Luminal (Proliferating)"))
+
+cellannot["newid"] <-  gsub("\\-", ".", cellannot$cellID)
+cellcyclecells = cellannot$newid[(cellannot["type"]=="Cell Cycle")
+                                 &(cellannot["sampleID"]!="SC172")]
+
+Luminal_Jef$cell.type.Chen <- factor(ifelse(colnames(Luminal_Jef) %in% cellcyclecells,"Cell Cycle","Luminal"))
+
+
+Luminal_Jef_info <- Luminal_Jef@meta.data
+
+mat <- table(Luminal_Jef_info$seurat_clusters, Luminal_Jef_info$cell.subtype)
+mat <- scale(mat)
+Idents(Luminal_Jef) <- "cell.type"
+
+Luminal_markers <- rownames(Luminal_dev_markers_sign[order(-Luminal_dev_markers_sign$avg_log2FC),])
+
+# Robo?
+proliferative <- c('MKI67', 'TOP2A',  'CDC20', 'CCNB1', 'CENPF', 'PTTG1')
+luminal <- c('KRT8', 'KLK4', 'KLK3', 'MSMB', 'MT1E', 'ACPP', 'PA2G2A')
+Luminal_litterature_markers <-c(luminal, proliferative)
+Luminal_litterature_markers <- intersect(Luminal_litterature_markers, rownames(Luminal_Jef))
+
+genes <- unlist(Luminal_litterature_markers) # %>% unique()
+
+columns_to_plot <- c("cell.type", "cell.subtype", "cell.type.Chen", "cell.status") 
+Luminal_Jef_info <- Luminal_Jef_info[, columns_to_plot]
+write.csv(Luminal_Jef_info, paste0(PATH_FIGSHARE, "Figure5middle_Data", ".csv"))
+
+annot_cols <- list(
+  cell.type = setNames(c("blue", "red"), levels(Luminal_Jef_info$cell.type)),
+  cell.subtype = setNames(c("darkblue", "red", "lightblue"),levels(Luminal_Jef_info$cell.subtype)),
+  cell.type.Chen = setNames(c("red", "blue"), levels(Luminal_Jef_info$cell.type.Chen)),
+  cell.status = setNames(c("red", "blue", "grey"), levels(Luminal_Jef_info$cell.status)))
+write.csv(plot_mat, paste0(PATH_FIGSHARE, "Figure5left_Data", ".csv"))
+
+heatmapAnnot <- rowAnnotation(
+  df = Luminal_Jef_info,
+  show_annotation_name = TRUE,
+  show_legend = TRUE,
+  col = annot_cols)
+
+Luminal_Jef <- ScaleData(Luminal_Jef, features = rownames(Luminal_Jef), verbose = FALSE)
+
+plot_mat = t(as.matrix(Luminal_Jef[["RNA"]]@scale.data[genes,]))
+write.csv(plot_mat, paste0(PATH_FIGSHARE, "Figure5left_Data", ".csv"))
+ht <- Heatmap(plot_mat,
+              show_column_names = T, 
+              show_row_names = F,
+              column_title_gp = gpar(fontsize = 6),
+              row_split = Luminal_Jef_info[,c("cell.type", "cell.subtype")],
+              row_title = NULL,
+              clustering_method_rows = "complete",
+              cluster_columns = F, 
+              cluster_rows = F,
+              col = circlize::colorRamp2(c(-2,0,2), colors = c("#18528f", "white", "#a81d1d")),
+              left_annotation = heatmapAnnot,
+              show_heatmap_legend = F,
+              column_names_gp = gpar(fontfamily = "sans", fontsize = 7, fontface = "italic"))
+
+plot_mat = t(as.matrix(Luminal_Jef[["RNA"]]@scale.data[Luminal_markers,]))
+write.csv(plot_mat, paste0(PATH_FIGSHARE, "Figure5left_Data", ".csv"))
+
+Luminal_labels_colors = signature_df[Luminal_markers,"color"]
+
+ht2 <- Heatmap(matrix = plot_mat, 
+               show_column_names = T, 
+               show_row_names = F,
+               column_title_gp = gpar(fontsize = 6, rot = 45),
+               row_split = Luminal_Jef_info[,c("cell.type", "cell.subtype")],
+               row_title = NULL,
+               clustering_method_rows = "complete",
+               cluster_columns = F, 
+               cluster_rows = F,
+               col = circlize::colorRamp2(c(-2,0,2), colors = c("#18528f", "white", "#a81d1d")),
+               show_heatmap_legend = T,
+               name = "expression.level",
+               column_names_gp = gpar(fontfamily = "sans", fontsize = 7, fontface = "italic",
+                                      col=Luminal_labels_colors))
+ht_list <- ht2 + ht
+pdf(paste0(PATH_FIG_HEATMAPS, "Luminal_markers_sc_new", ".pdf"), width = 8, height = 5)
+draw(ht_list)
+dev.off()
+```
+```{r}
+length(cellcyclecells)
+length(intersect(cellcyclecells, Luminal_dev))
+length(intersect(cellcyclecells, Luminal_dev))/length(cellcyclecells)
+```
+# Calculate z-scores for DN RP counts and LA RP counts
+```{r}
+DN_RP_counts <- DN_counts[,grep("_RP", colnames(DN_counts))]
+keep <- filterByExpr(DN_RP_counts, min.count = 10, min.total.count = 15, min.prop = 0.1)
+DN_RP_counts <- DN_RP_counts[keep,]
+DN_RP_counts <- DN_RP_counts[apply(DN_RP_counts, 1, var) >= 0.1,]
+DN_RP_counts <- log2(DN_RP_counts + 1)
+DN_RP_zscores <- as.data.frame(scale(DN_RP_counts, center = colMeans(DN_RP_counts), 
+                                     scale =  apply(DN_RP_counts, 2, sd)))
+print(setdiff(rownames(Luminal_dev_markers_sign), rownames(DN_RP_zscores)))
+write.csv(DN_RP_zscores, paste0(PATH_FIGSHARE, "de_novo_cohort_zscores", ".csv"))
+
+LA_RP_counts <- LA_counts[,grep("_RP", colnames(LA_counts))]
+keep <- filterByExpr(LA_RP_counts, min.count = 10, min.total.count = 15, min.prop = 0.1)
+LA_RP_counts <- LA_RP_counts[keep,]
+LA_RP_counts <- LA_RP_counts[apply(LA_RP_counts, 1, var) >= 0.1,]
+LA_RP_counts <- log2(LA_RP_counts + 1)
+LA_RP_zscores <- as.data.frame(scale(LA_RP_counts, center = colMeans(LA_RP_counts), 
+                                     scale =  apply(LA_RP_counts, 2, sd)))
+write.csv(LA_RP_zscores, paste0(PATH_FIGSHARE, "locally_advanced_cohort_zscores", ".csv"))
+
+```
+
+# De novo metastatic prostate cancer, expression of primaries
+```{r}
+DN_S = c("M1RP_ID4_RP9", "M1RP_ID8_RP7", "M1RP_ID23_RP4", "M1RP_ID26_RP3", "M1RP_ID33_RP6")
+DN_NS = c("M1RP_ID3_RP4", "M1RP_ID3_RP5", "M1RP_ID4_RP2", "M1RP_ID4_RP2",
+          "M1RP_ID8_RP1", "M1RP_ID8_RP8", "M1RP_ID8_RP4", "M1RP_ID23_RP9",
+          "M1RP_ID26_RP1", "M1RP_ID33_RP5", "M1RP_ID33_RP9")
+
+DN_RP_zscores_Luminal = DN_RP_zscores[Luminal_markers,]
+DN_RP_info <- data.frame(samplestatus = ifelse(colnames(DN_RP_zscores_Luminal) %in% DN_S, "S",
+                                               ifelse(colnames(DN_RP_zscores_Luminal) %in% DN_NS, "NS", NA)))
+rownames(DN_RP_info) <- colnames(DN_RP_zscores)
+DN_RP_info$patID <- sapply(rownames(DN_RP_info), function(x) str_split(x, "_")[[1]][2])
+DN_RP_info$patnum <- as.numeric(unlist(str_extract_all(DN_RP_info$patID, "\\d+")))
+DN_RP_info <- DN_RP_info[order(DN_RP_info$patnum, DN_RP_info$samplestatus),]
+DN_RP_info$patID <- factor(DN_RP_info$patID, levels=unique(DN_RP_info$patID))
+write.csv(DN_RP_info, paste0(PATH_FIGSHARE, "de_novo_primaries_seeding_status", ".csv"))
+
+colours <- list('samplestatus' = c('S' = 'purple', 'NS' = 'orange'))
+colAnn <- HeatmapAnnotation(df = DN_RP_info[,c("patID", "samplestatus")],
+                            which = 'col',
+                            col = colours,
+                            annotation_width = unit(c(1, 4), 'cm'),
+                            gap = unit(1, 'mm'))
+write.csv(DN_RP_zscores_Luminal[,rownames(DN_RP_info)], paste0(PATH_FIGSHARE, "SupplementaryFigure74_Data", ".csv"))
+
+hmap <- Heatmap(DN_RP_zscores_Luminal[,rownames(DN_RP_info)],  column_split = DN_RP_info$patnum, 
+                show_column_names = TRUE, show_row_names = TRUE, name="z-scores",
+                top_annotation=colAnn, cluster_columns = FALSE, cluster_rows = FALSE)
+
+pdf(paste0(PATH_FIG_HEATMAPS, "DN_Luminal_markers_signature", ".pdf"), width = 8, height = 9)
+draw(hmap, heatmap_legend_side="left", annotation_legend_side="right")
+dev.off()
+```
+# Locally advanced clustering
+```{r}
+LA_MS = c("HR_ID1_RP3", "HR_ID3_RP1", "HR_ID4_RP2", "HR_ID5_RP1", "HR_ID6_RP2", 
+       "HR_ID7_RP4", "HR_ID9_RP1", "HR_ID10_RP3", "HR_ID11_RP4", "HR_ID15_RP5",
+       "HR_ID17_RP6", "HR_ID18_RP5")
+LA_LNS = c("HR_ID1_RP5", "HR_ID3_RP3", "HR_ID4_RP5", "HR_ID5_RP3", "HR_ID6_RP5",
+        "HR_ID7_RP5", "HR_ID9_RP4", "HR_ID10_RP1", "HR_ID11_RP1", "HR_ID15_RP4",
+        "HR_ID17_RP4", "HR_ID18_RP4")
+
+LA_S = c("HR_ID1_RP3", "HR_ID1_RP4", "HR_ID3_RP1", "HR_ID4_RP2", 
+      "HR_ID5_RP1", "HR_ID5_RP2", "HR_ID6_RP2", "HR_ID6_RP4", 
+      "HR_ID7_RP4", "HR_ID7_RP3", "HR_ID9_RP1", "HR_ID9_RP5", "HR_ID9_RP2", 
+      "HR_ID10_RP3",  "HR_ID11_RP4", "HR_ID11_RP5", "HR_ID11_RP2", 
+      "HR_ID15_RP5", "HR_ID17_RP6", "HR_ID17_RP1", "HR_ID18_RP5")
+LA_NS = c("HR_ID1_RP5", "HR_ID1_RP1", "HR_ID1_RP2", 
+       "HR_ID3_RP3", "HR_ID3_RP4", "HR_ID3_RP2", "HR_ID3_RP5",
+       "HR_ID4_RP5", "HR_ID4_RP1", "HR_ID4_RP3", "HR_ID4_RP4",
+       "HR_ID5_RP3", "HR_ID5_RP4", "HR_ID6_RP5", "HR_ID6_RP1", "HR_ID6_RP3", 
+       "HR_ID7_RP5", "HR_ID7_RP1", "HR_ID7_RP6", "HR_ID7_RP2", "HR_ID9_RP4", "HR_ID9_RP3",
+       "HR_ID10_RP1", "HR_ID10_RP2", "HR_ID10_RP6", "HR_ID10_RP5","HR_ID10_RP4",
+       "HR_ID11_RP1", "HR_ID11_RP3",
+       "HR_ID15_RP4", "HR_ID15_RP2", "HR_ID15_RP1", "HR_ID15_RP3", 
+       "HR_ID17_RP4", "HR_ID17_RP5", "HR_ID17_RP3", "HR_ID17_RP2",
+       "HR_ID18_RP4", "HR_ID18_RP3", "HR_ID18_RP1", "HR_ID18_RP2")
+
+LA_RP_zscores_Luminal = LA_RP_zscores[Luminal_markers,]
+LA_RP_info <- data.frame(samplestatus = ifelse(colnames(LA_RP_zscores_Luminal) %in% LA_MS, "S1", ifelse(colnames(LA_RP_zscores_Luminal) %in% setdiff(LA_S, LA_MS), "S", ifelse(colnames(LA_RP_zscores_Luminal) %in% LA_NS, "NS", NA))))
+                       
+rownames(LA_RP_info) <- colnames(LA_RP_zscores)
+LA_RP_info$patID <- sapply(rownames(LA_RP_info), function(x) str_split(x, "_")[[1]][2])
+LA_RP_info$patnum <- as.numeric(unlist(str_extract_all(LA_RP_info$patID, "\\d+")))
+LA_RP_info <- LA_RP_info[order(LA_RP_info$patnum, LA_RP_info$samplestatus),]
+LA_RP_info$patID <- factor(LA_RP_info$patID, levels=unique(LA_RP_info$patID))
+
+write.csv(LA_RP_info, paste0(PATH_FIGSHARE, "locally_advanced_primaries_seeding_status", ".csv"))
+
+colours <- list('samplestatus' = c('S1' = 'darkviolet', 'S'= 'purple', 'NS' = 'orange'))
+colAnn <- HeatmapAnnotation(df = LA_RP_info[,c("patID", "samplestatus")],
+                            which = 'col',
+                            col = colours,
+                            annotation_width = unit(c(1, 4), 'cm'),
+                            gap = unit(1, 'mm'))
+write.csv(LA_RP_zscores_Luminal[,rownames(LA_RP_info)], paste0(PATH_FIGSHARE, "SupplementaryFigure73_Data", ".csv"))
+
+hmap <- Heatmap(LA_RP_zscores_Luminal[,rownames(LA_RP_info)],  column_split = LA_RP_info$patnum, 
+                show_column_names = TRUE, show_row_names = TRUE, name="z-scores",
+                top_annotation=colAnn, cluster_columns = FALSE, cluster_rows = FALSE)
+
+pdf(paste0(PATH_FIG_HEATMAPS, "LA_Luminal_markers_signature", ".pdf"), width = 16, height = 9)
+draw(hmap, heatmap_legend_side="left", annotation_legend_side="right")
+dev.off()
+```
+# TCGA clustering & KM of Luminal markers
+```{r}
+# 1. Cluster TCGA RP samples based on expression of genes in signature
+Luminal_markers_TCGA <- intersect(Luminal_markers, rownames(tcga))
+expr_df = tcga[Luminal_markers_TCGA, tcga_info$sampleID]
+annot_df = data.frame(tcga_info$LNstatus)
+colnames(annot_df) <- 'LNstatus'
+rownames(annot_df) <- tcga_info$sampleID
+
+colours <- list('LNstatus' = c('N1' = '#FF0000', 'N0' = '#0000FF', 'NA' =  '#FFFFFF'))
+colAnn <- HeatmapAnnotation(df = annot_df,
+                            which = 'col',
+                            col = colours,
+                            annotation_width = unit(c(1, 4), 'cm'),
+                            gap = unit(1, 'mm'))
+
+write.csv(expr_df, paste0(PATH_FIGSHARE, "Figure6_Data", ".csv"))
+
+hmap <- Heatmap(expr_df,  show_column_names = FALSE, show_row_names = TRUE, 
+                top_annotation=colAnn, cluster_columns = TRUE, cluster_rows = FALSE, column_km = 2)
+
+pdf(paste0(PATH_FIG_HEATMAPS, "TCGA_clusters_Luminal_markers", ".pdf"), width = 8, height = 8)
+draw(hmap, heatmap_legend_side="left", annotation_legend_side="right")
+dev.off()
+
+column_order <- column_order(hmap)
+sampleIDs <- colnames(expr_df)
+cluster1 <- sampleIDs[column_order$`1`]
+cluster2 <- sampleIDs[column_order$`2`]
+
+print(length(cluster1))
+print(length(cluster2))
+
+cluster1_N1 <- cluster1[cluster1 %in% rownames(annot_df)[annot_df$LNstatus=="N1"]]
+cluster2_N1 <- cluster2[cluster2 %in% rownames(annot_df)[annot_df$LNstatus=="N1"]]
+print(length(cluster1_N1))
+print(length(cluster2_N1))
+
+ratio1 = length(cluster1_N1)/length(cluster1)
+ratio2 = length(cluster2_N1)/length(cluster2)
+
+if (ratio1>ratio2){
+  print(fisher.test(matrix(c(length(cluster1_N1), length(cluster1)-length(length(cluster1_N1)),
+                             length(cluster2_N1), length(cluster2)-length(cluster2_N1)), nrow=2), 
+                    alternative="greater"))
+  Luminal_TCGA_aggressive = sampleIDs[column_order$`1`]
+  print("cluster1 contains a higher number of N1 sample")
+} else {
+  print(fisher.test(matrix(c(length(cluster2_N1), length(cluster2)-length(cluster2_N1),
+                             length(cluster1_N1), length(cluster1)-length(cluster1_N1)), nrow=2), 
+                    alternative="greater"))
+  Luminal_TCGA_aggressive = sampleIDs[column_order$`2`]
+  print("cluster2 contains a higher number of N1 sample")
+}
+
+tcga_info$cluster <- ifelse(tcga_info$sampleID %in% cluster1, "C1", "C2")
+
+write.csv(tcga_info, paste0(PATH_FIGSHARE, "SupplementaryFigure75_Data", ".csv"), row.names = FALSE)
+
+# 2. KM
+info <- tcga_info
+fit <- survfit(Surv(endpoint.time, endpoint) ~ cluster, data=info)
+clusters <- levels(as.factor(info$cluster))
+pval <- surv_pvalue(fit)$pval
+print(pval)
+ggsurv <- ggsurvplot(fit, data = info, size = 1, ylab = "PFI", palette = c("#E7B800", "#2E9FDF"), 
+                     conf.int = TRUE, pval = TRUE, risk.table = TRUE, 
+                     risk.table.col = "strata",censor.shape="|", legend.labs = c(clusters),  
+                     risk.table.height = 0.25, ggtheme = theme_bw())
+
+pdf(paste0(PATH_FIG_SURVIVAL, "TCGA_SC_clusters_Luminal_markers", ".pdf"), width = 6, height = 5)
+print(ggsurv, newpage = FALSE)
+dev.off()
+
+```
+
+#### FIBROBLASTS #####
+```{r}
+set.seed(1)
+RP_Fibroblast_sign <- subset(chen_primaries, subset = celltype=="Fibroblast",  features = signature_chen)
+RP_Fibroblast_sign <- FindVariableFeatures(RP_Fibroblast_sign, selection.method = "vst")
+RP_Fibroblast_sign <- ScaleData(RP_Fibroblast_sign)
+RP_Fibroblast_sign <- RunPCA(RP_Fibroblast_sign, features = VariableFeatures(RP_Fibroblast_sign))
+
+std <- Stdev(RP_Fibroblast_sign, reduction = "pca")
+var <- std^2
+PC_1 <- round(var[1]/sum(var),4)
+PC_2 <- round(var[2]/sum(var),4)
+PC_1 <- paste("PC1", PC_1*100, "%")
+PC_2 <- paste("PC2", PC_2*100, "%")
+
+Fibroblast_pca_loadings_sign <- Loadings(object = RP_Fibroblast_sign, reduction = "pca")
+Fibroblast_pca_embeddings_sign <- data.frame(Embeddings(object = RP_Fibroblast_sign, reduction = "pca"))
+
+write.csv(Fibroblast_pca_loadings_sign[,c("PC_1", "PC_2")], paste0(PATH_FIGSHARE, "Figure7right_Data", ".csv"))
+write.csv(Fibroblast_pca_embeddings_sign[, c("PC_1", "PC_2")], paste0(PATH_FIGSHARE, "Figure7left_Data", ".csv"))
+
+Fibroblast_dev <- rownames(Fibroblast_pca_embeddings_sign[(Fibroblast_pca_embeddings_sign$PC_2>=2)
+                                                          &(Fibroblast_pca_embeddings_sign$PC_1<=2),])
+print(length(Fibroblast_dev))
+
+plot1 <- DimPlot(RP_Fibroblast_sign, cells.highlight = Fibroblast_dev,  reduction = "pca", cols="black")+labs(y=PC_2, x=PC_1)+ scale_color_manual(labels = c("Fibroblast", "Fibroblast_dev"), values = c("gray", "black"))+theme(legend.position = "bottom")
+plot2 <- VizDimLoadings(RP_Fibroblast_sign, dims = 2, reduction = "pca")
+g <- grid.arrange(plot1, plot2, ncol=2, widths=c(1.1,0.9))
+ggsave(paste0(PATH_FIG_SCMARKERS, "SC_Fibroblast", ".svg"), plot=g , width = 10, height = 5)
+```
+```{r}
+RP_Fibroblast_random_sign <- subset(chen_primaries, subset = celltype=="Fibroblast", 
+                                    features = random_signature)
+RP_Fibroblast_random_sign <- FindVariableFeatures(RP_Fibroblast_random_sign, selection.method = "vst")
+RP_Fibroblast_random_sign <- ScaleData(RP_Fibroblast_random_sign)
+RP_Fibroblast_random_sign <- RunPCA(RP_Fibroblast_random_sign, features = VariableFeatures(RP_Fibroblast_random_sign))
+
+std <- Stdev(RP_Fibroblast_random_sign, reduction = "pca")
+var <- std^2
+PC_1 <- round(var[1]/sum(var),4)
+PC_2 <- round(var[2]/sum(var),4)
+PC_1 <- paste("PC1", PC_1*100, "%")
+PC_2 <- paste("PC2", PC_2*100, "%")
+
+Fibroblast_pca_loadings_random_sign <- Loadings(object = RP_Fibroblast_random_sign, reduction = "pca")
+Fibroblast_pca_embeddings_random_sign <- data.frame(Embeddings(object = RP_Fibroblast_random_sign, reduction = "pca"))
+write.csv(Fibroblast_pca_embeddings_random_sign[, c("PC_1", "PC_2")], paste0(PATH_FIGSHARE, "SupplementaryFigure81left_Data", ".csv"))
+
+plot1 <- DimPlot(RP_Fibroblast_random_sign, cells.highlight = Fibroblast_dev,  reduction = "pca", cols="black")+labs(y=PC_2, x=PC_1)+ scale_color_manual(labels = c("Fibroblast", "Fibroblast_dev"), values = c("gray", "black"))+theme(legend.position = "bottom")
+
+RP_Fibroblast_all_genes <- subset(chen_primaries, subset = celltype=="Fibroblast")
+RP_Fibroblast_all_genes <- FindVariableFeatures(RP_Fibroblast_all_genes, selection.method = "vst")
+RP_Fibroblast_all_genes <- ScaleData(RP_Fibroblast_all_genes)
+RP_Fibroblast_all_genes <- RunPCA(RP_Fibroblast_all_genes, features = VariableFeatures(RP_Fibroblast_all_genes))
+
+std <- Stdev(RP_Fibroblast_all_genes, reduction = "pca")
+var <- std^2
+PC_1 <- round(var[1]/sum(var),4)
+PC_2 <- round(var[2]/sum(var),4)
+PC_1 <- paste("PC1", PC_1*100, "%")
+PC_2 <- paste("PC2", PC_2*100, "%")
+
+Fibroblast_pca_loadings_all_genes <- Loadings(object = RP_Fibroblast_all_genes, reduction = "pca")
+Fibroblast_pca_embeddings_all_genes <- data.frame(Embeddings(object = RP_Fibroblast_all_genes, reduction = "pca"))
+write.csv(Fibroblast_pca_embeddings_all_genes[, c("PC_1", "PC_2")], paste0(PATH_FIGSHARE, "SupplementaryFigure81right_Data", ".csv"))
+
+plot2 <- DimPlot(RP_Fibroblast_all_genes, cells.highlight = Fibroblast_dev,  reduction = "pca", cols="black")+labs(y=PC_2, x=PC_1)+ scale_color_manual(labels = c("Fibroblast", "Fibroblast_dev"), values = c("gray", "black"))+theme(legend.position = "bottom")
+g <- grid.arrange(plot1, plot2, ncol=2, widths=c(1,1))
+ggsave(paste0(PATH_FIG_SCMARKERS, "SC_Fibroblast_random_all", ".svg"), plot=g , width = 10, height = 5)
+```
+
+# Markers of Fibroblast cells, in our signature and using all genes
+```{r}
+RP_Fibroblast <- subset(chen_primaries, subset = celltype=="Fibroblast")
+Fibroblast_dev_markers_sign <- FindMarkers(RP_Fibroblast, ident.1 = Fibroblast_dev, features = signature_chen, only.pos = TRUE)
+Fibroblast_dev_markers_sign <- Fibroblast_dev_markers_sign[Fibroblast_dev_markers_sign$p_val_adj<0.05,]
+Fibroblast_dev_markers_all <- FindMarkers(RP_Fibroblast, ident.1 = Fibroblast_dev, only.pos = TRUE)
+Fibroblast_dev_markers_all <- Fibroblast_dev_markers_all[Fibroblast_dev_markers_all$p_val_adj<0.05,]
+Fibroblast_dev_markers_all["sign"] <- ifelse(rownames(Fibroblast_dev_markers_all)%in%signature_chen, TRUE, FALSE)
+write.table(Fibroblast_dev_markers_all, paste0(PATH_DESEQ2, "Fibroblast_dev_findmarkers_all", ".tsv"), sep="\t", row.names = T)
+
+dim(Fibroblast_dev_markers_sign)
+dim(Fibroblast_dev_markers_all)
+```
+
+# Are the markers specific to fibroblast cells
+```{r}
+chen_RP_Fibroblast_dev <- chen_primaries
+chen_RP_Fibroblast_dev$cell.type <- ifelse(colnames(chen_RP_Fibroblast_dev) %in% Fibroblast_dev, "Fibroblast_dev", chen_RP_Fibroblast_dev$celltype)
+Idents(chen_RP_Fibroblast_dev) = chen_RP_Fibroblast_dev$cell.type
+sorted_idents <- c("Luminal",  "Basal/Intermediate", 'Fibroblast', "Fibroblast_dev", 'Endothelial', 'Monocytic', 'Mast', 'T','B')
+Idents(chen_RP_Fibroblast_dev) <- factor(x =Idents(chen_RP_Fibroblast_dev), levels = sorted_idents)
+
+g <- DotPlot(chen_RP_Fibroblast_dev, features = rownames(Fibroblast_dev_markers_sign[order(Fibroblast_dev_markers_sign$avg_log2FC),]))+ RotatedAxis() + coord_flip()
+ggsave(paste0(PATH_FIG_DOTPLOT, "Fibroblast_dotplot", ".svg"), plot=g , width = 6, height = 6)
+```
+
+
+```{r}
+Fibroblast_res = Fibroblast_dev_markers_all
+Fibroblast_res$gene = rownames(Fibroblast_res)
+Fibroblast_res <- Fibroblast_res[,c("gene", "avg_log2FC")]
+row.names(Fibroblast_res) <- NULL
+Fibroblast_ranks <- deframe(Fibroblast_res)
+
+Fibroblast_markers_fgsea_res<- fgsea(pathways=pathways.hallmark, stats=Fibroblast_ranks, nperm=1000)
+Fibroblast_markers_fgsea_res <- Fibroblast_markers_fgsea_res %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+Fibroblast_markers_fgsea_res %>% 
+  dplyr::select(-leadingEdge, -ES, -nMoreExtreme) %>% 
+  arrange(padj) 
+
+Fibroblast_markers_fgsea_res <- data.frame(Fibroblast_markers_fgsea_res)
+
+check_overlap <- function(leading_genes, signature_genes) {
+  return(intersect(leading_genes, signature_genes))
+}
+
+Fibroblast_markers_fgsea_res$overlap <- sapply(Fibroblast_markers_fgsea_res$leadingEdge, check_overlap,  signature_genes=signature)
+Fibroblast_markers_fgsea_res$leadingEdge <- sapply(Fibroblast_markers_fgsea_res$leadingEdge, function(x) paste(x, collapse = ","))
+Fibroblast_markers_fgsea_res$overlap <- sapply(Fibroblast_markers_fgsea_res$overlap, function(x) paste(x, collapse = ","))
+Fibroblast_markers_fgsea_res <- Fibroblast_markers_fgsea_res[,c("pathway", "padj", "ES","NES","size","leadingEdge","overlap")]
+write.table(Fibroblast_markers_fgsea_res, paste0(PATH_GSEA, "Fibroblast_markers_fgsea_res", ".tsv"), sep="\t", row.names = F)
+
+Fibroblast_gsea <- ggplot(Fibroblast_markers_fgsea_res, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.05)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score") + 
+  theme_minimal()
+ggsave(paste0(PATH_FIG_GSEA, "Fibroblast_gsea", ".svg"), plot=Fibroblast_gsea , width = 8, height = 10)
+```
+```{r}
+Fibroblast_res = Fibroblast_dev_markers_sign
+Fibroblast_res$gene = rownames(Fibroblast_res)
+Fibroblast_res <- Fibroblast_res[,c("gene", "avg_log2FC")]
+row.names(Fibroblast_res) <- NULL
+Fibroblast_ranks <- deframe(Fibroblast_res)
+
+Fibroblast_markers_fgsea_res<- fgsea(pathways=pathways.hallmark, stats=Fibroblast_ranks, nperm=1000)
+Fibroblast_markers_fgsea_res <- Fibroblast_markers_fgsea_res %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+Fibroblast_markers_fgsea_res %>% 
+  dplyr::select(-leadingEdge, -ES, -nMoreExtreme) %>% 
+  arrange(padj) 
+
+Fibroblast_markers_fgsea_res <- data.frame(Fibroblast_markers_fgsea_res)
+
+check_overlap <- function(leading_genes, signature_genes) {
+  return(intersect(leading_genes, signature_genes))
+}
+
+Fibroblast_markers_fgsea_res$overlap <- sapply(Fibroblast_markers_fgsea_res$leadingEdge, check_overlap,  signature_genes=signature)
+Fibroblast_markers_fgsea_res$leadingEdge <- sapply(Fibroblast_markers_fgsea_res$leadingEdge, function(x) paste(x, collapse = ","))
+Fibroblast_markers_fgsea_res$overlap <- sapply(Fibroblast_markers_fgsea_res$overlap, function(x) paste(x, collapse = ","))
+Fibroblast_markers_fgsea_res <- Fibroblast_markers_fgsea_res[,c("pathway", "padj", "ES","NES","size","leadingEdge","overlap")]
+write.table(Fibroblast_markers_fgsea_res, paste0(PATH_GSEA, "Fibroblast_markers_fgsea_res_sign", ".tsv"), sep="\t", row.names = F)
+
+Fibroblast_gsea <- ggplot(Fibroblast_markers_fgsea_res, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.05)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score") + 
+  theme_minimal()
+ggsave(paste0(PATH_FIG_GSEA, "Fibroblast_gsea_sign", ".svg"), plot=Fibroblast_gsea , width = 8, height = 10)
+
+
+
+```
+```{r}
+Fibroblast_Jef<- readRDS("/home/bioit/ldschaet/Desktop/Paper3/SC_analysis/231005_seuratObj_chen_fibroblasts_no_metastatic.rds")
+Fibroblast_info <- Fibroblast_Jef@meta.data
+table(Fibroblast_info[rownames(Fibroblast_info)%in%Fibroblast_dev,]$cell.type.jef.L2)
+table(Fibroblast_info$cell.type.jef.L2)
+
+```
+```{r}
+status <- as.character(Fibroblast_Jef@meta.data$status)
+status[status=="malignant"] <- "cancerous"
+status[status=="non-malignant"] <- "non-cancerous"
+```
+
+
+```{r}
+Fibroblast_Jef_info <- Fibroblast_Jef@meta.data
+Fibroblast_Jef$cell.type <- ifelse(rownames(Fibroblast_info) %in% Fibroblast_dev, "Fibroblast_dev", "Fibroblast")
+Fibroblast_Jef$cell.type <- factor(Fibroblast_Jef$cell.type)
+Idents(Fibroblast_Jef) <-Fibroblast_Jef$cell.type 
+Fibroblast_Jef$cell.subtype <- Fibroblast_Jef_info$cell.type.jef.L2
+Fibroblast_Jef <- subset(Fibroblast_Jef, subset = cell.subtype %in% c("Adipogenic fibroblasts", 
+                                                                      "CAFs (ECM remodeling)", 
+                                                                      "Myofibroblasts", 
+                                                                      "Pericytes 1",
+                                                                      "Pericytes 2"))
+Fibroblast_Jef$cell.subtype <- factor(Fibroblast_Jef$cell.subtype, levels = c("Adipogenic fibroblasts", 
+                                                                      "CAFs (ECM remodeling)", 
+                                                                      "Myofibroblasts", 
+                                                                      "Pericytes 1",
+                                                                      "Pericytes 2"))
+Fibroblast_Jef$cell.status <- factor(status)
+
+Fibroblast_Jef_info <- Fibroblast_Jef@meta.data
+
+mat <- table(Fibroblast_Jef_info$seurat_clusters, Fibroblast_Jef_info$cell.subtype)
+mat <- scale(mat)
+Idents(Fibroblast_Jef) <- "cell.type"
+
+Fibroblast_markers <- rownames(Fibroblast_dev_markers_sign[order(-Fibroblast_dev_markers_sign$avg_log2FC),])
+
+myofibroblasts <- c('MYH11', 'ACTA2', 'PLN', 'ACTG2', 'HRH2', 'SORBS1')
+pericytes <- c('RGS5', 'NDUFA4L2', 'HIGD1B')
+adipogeneic <-  c('CFD', 'GSN', 'APOD', 'MFAP5', 'ADH1B', 'SFRP1', 'PDGFRA', 'CD34')
+cafs_ecm <- c('COMP', 'CTHRC1', 'FN1', 'DCN', 'LUM', 'VCAN', 'COL14A1', 'FBLN1', 
+          'FBLN2', 'SMOC', 'LOX', 'LOXL1', 'CXCL14', 'SEMA3C', 'SFRP4', 'FAP', 
+          'COL10A1', 'COL11A1', 'THBS2', 'INHBA')
+Fibroblast_litterature_markers <-c(myofibroblasts, pericytes, adipogeneic, cafs_ecm)
+Fibroblast_litterature_markers <- intersect(Fibroblast_litterature_markers, rownames(Fibroblast_Jef))
+
+genes <- unlist(Fibroblast_litterature_markers) # %>% unique()
+
+columns_to_plot <- c("cell.type", "cell.subtype", "cell.status") 
+Fibroblast_Jef_info <- Fibroblast_Jef_info[, columns_to_plot]
+write.csv(Fibroblast_Jef_info, paste0(PATH_FIGSHARE, "Figure8middle_Data", ".csv"))
+
+annot_cols <- list(
+  cell.type = setNames(c("blue", "red"), levels(Fibroblast_Jef_info$cell.type)),
+  cell.subtype = setNames(c("orange", "purple", "green", "darkblue", "blue"),
+                          levels(Fibroblast_Jef_info$cell.subtype)),
+  cell.status = setNames(c("blue", "gray"), levels(Fibroblast_Jef_info$cell.status)))
+
+heatmapAnnot <- rowAnnotation(
+  df = Fibroblast_Jef_info,
+  show_annotation_name = TRUE,
+  show_legend = TRUE,
+  col = annot_cols)
+
+Fibroblast_Jef <- ScaleData(Fibroblast_Jef, features = rownames(Fibroblast_Jef), verbose = FALSE)
+
+plot_mat = t(as.matrix(Fibroblast_Jef[["RNA"]]@scale.data[genes,]))
+write.csv(plot_mat, paste0(PATH_FIGSHARE, "Figure8left_Data", ".csv"))
+
+ht <- Heatmap(plot_mat,
+              show_column_names = T, 
+              show_row_names = F,
+              column_title_gp = gpar(fontsize = 6),
+              row_split = Fibroblast_Jef_info[,c("cell.type", "cell.subtype")],
+              row_title = NULL,
+              clustering_method_rows = "complete",
+              cluster_columns = F, 
+              cluster_rows = F,
+              col = circlize::colorRamp2(c(-2,0,2), colors = c("#18528f", "white", "#a81d1d")),
+              left_annotation = heatmapAnnot,
+              show_heatmap_legend = F,
+              column_names_gp = gpar(fontfamily = "sans", fontsize = 7, fontface = "italic"))
+
+plot_mat = t(as.matrix(Fibroblast_Jef[["RNA"]]@scale.data[Fibroblast_markers,]))
+write.csv(plot_mat, paste0(PATH_FIGSHARE, "Figure8right_Data", ".csv"))
+
+Fibroblast_labels_colors = signature_df[Fibroblast_markers,"color"]
+
+ht2 <- Heatmap(matrix = plot_mat, 
+               show_column_names = T, 
+               show_row_names = F,
+               column_title_gp = gpar(fontsize = 6, rot = 45),
+               row_split = Fibroblast_Jef_info[,c("cell.type", "cell.subtype")],
+               row_title = NULL,
+               clustering_method_rows = "complete",
+               cluster_columns = F, 
+               cluster_rows = F,
+               col = circlize::colorRamp2(c(-2,0,2), colors = c("#18528f", "white", "#a81d1d")),
+               show_heatmap_legend = T,
+               name = "expression.level",
+               column_names_gp = gpar(fontfamily = "sans", fontsize = 7, fontface = "italic",
+                                      col=Fibroblast_labels_colors))
+ht_list <- ht2 + ht
+pdf(paste0(PATH_FIG_HEATMAPS, "Fibroblast_markers_sc", ".pdf"), width = 8, height = 5)
+draw(ht_list)
+dev.off()
+ht_list
+
+```
+
+```{r}
+DN_RP_zscores_Fibroblast = DN_RP_zscores[Fibroblast_markers,]
+DN_RP_info <- data.frame(samplestatus = ifelse(colnames(DN_RP_zscores_Fibroblast) %in% DN_S, "S",
+                                               ifelse(colnames(DN_RP_zscores_Fibroblast) %in% DN_NS, "NS", NA)))
+rownames(DN_RP_info) <- colnames(DN_RP_zscores)
+DN_RP_info$patID <- sapply(rownames(DN_RP_info), function(x) str_split(x, "_")[[1]][2])
+DN_RP_info$patnum <- as.numeric(unlist(str_extract_all(DN_RP_info$patID, "\\d+")))
+DN_RP_info <- DN_RP_info[order(DN_RP_info$patnum, DN_RP_info$samplestatus),]
+DN_RP_info$patID <- factor(DN_RP_info$patID, levels=unique(DN_RP_info$patID))
+
+colours <- list('samplestatus' = c('S' = 'purple', 'NS' = 'orange'))
+colAnn <- HeatmapAnnotation(df = DN_RP_info[,c("patID", "samplestatus")],
+                            which = 'col',
+                            col = colours,
+                            annotation_width = unit(c(1, 4), 'cm'),
+                            gap = unit(1, 'mm'))
+
+write.csv(DN_RP_zscores_Fibroblast[,rownames(DN_RP_info)], paste0(PATH_FIGSHARE, "SupplementaryFigure84_Data", ".csv"))
+hmap <- Heatmap(DN_RP_zscores_Fibroblast[,rownames(DN_RP_info)],  column_split = DN_RP_info$patnum, 
+                show_column_names = TRUE, show_row_names = TRUE, name="z-scores",
+                top_annotation=colAnn, cluster_columns = FALSE, cluster_rows = FALSE)
+
+pdf(paste0(PATH_FIG_HEATMAPS, "DN_Fibroblast_markers_signature", ".pdf"), width = 8, height = 8)
+draw(hmap, heatmap_legend_side="left", annotation_legend_side="right")
+dev.off()
+```
+
+```{r}
+LA_RP_zscores_Fibroblast = LA_RP_zscores[Fibroblast_markers,]
+LA_RP_info <- data.frame(samplestatus = ifelse(colnames(LA_RP_zscores_Fibroblast) %in% LA_MS, "S1", ifelse(colnames(LA_RP_zscores_Fibroblast) %in% setdiff(LA_S, LA_MS), "S", ifelse(colnames(LA_RP_zscores_Fibroblast) %in% LA_NS, "NS", NA))))
+                       
+rownames(LA_RP_info) <- colnames(LA_RP_zscores)
+LA_RP_info$patID <- sapply(rownames(LA_RP_info), function(x) str_split(x, "_")[[1]][2])
+LA_RP_info$patnum <- as.numeric(unlist(str_extract_all(LA_RP_info$patID, "\\d+")))
+LA_RP_info <- LA_RP_info[order(LA_RP_info$patnum, LA_RP_info$samplestatus),]
+LA_RP_info$patID <- factor(LA_RP_info$patID, levels=unique(LA_RP_info$patID))
+
+colours <- list('samplestatus' = c('S1' = 'darkviolet', 'S'= 'purple', 'NS' = 'orange'))
+colAnn <- HeatmapAnnotation(df = LA_RP_info[,c("patID", "samplestatus")],
+                            which = 'col',
+                            col = colours,
+                            annotation_width = unit(c(1, 4), 'cm'),
+                            gap = unit(1, 'mm'))
+write.csv(LA_RP_zscores_Fibroblast[,rownames(LA_RP_info)], paste0(PATH_FIGSHARE, "SupplementaryFigure83_Data", ".csv"))
+hmap <- Heatmap(LA_RP_zscores_Fibroblast[,rownames(LA_RP_info)],  column_split = LA_RP_info$patnum, 
+                show_column_names = TRUE, show_row_names = TRUE, name="z-scores",
+                top_annotation=colAnn, cluster_columns = FALSE, cluster_rows = FALSE)
+
+pdf(paste0(PATH_FIG_HEATMAPS, "LA_Fibroblast_markers_signature", ".pdf"), width = 14, height = 8)
+draw(hmap, heatmap_legend_side="left", annotation_legend_side="right")
+dev.off()
+```
+# TCGA survival fibroblast
+```{r}
+Fibroblast_markers_TCGA <- intersect(Fibroblast_markers, rownames(tcga))
+expr_df = tcga[Fibroblast_markers_TCGA, tcga_info$sampleID]
+annot_df = data.frame(tcga_info$LNstatus)
+colnames(annot_df) <- 'LNstatus'
+rownames(annot_df) <- tcga_info$sampleID
+
+colours <- list('LNstatus' = c('N1' = '#FF0000', 'N0' = '#0000FF', 'NA' =  '#FFFFFF'))
+colAnn <- HeatmapAnnotation(df = annot_df,
+                            which = 'col',
+                            col = colours,
+                            annotation_width = unit(c(1, 4), 'cm'),
+                            gap = unit(1, 'mm'))
+write.csv(expr_df, paste0(PATH_FIGSHARE, "SupplementaryFigure85_Data", ".csv"))
+
+hmap <- Heatmap(expr_df,  show_column_names = FALSE, show_row_names = TRUE, 
+                top_annotation=colAnn, cluster_columns = TRUE, cluster_rows = FALSE, column_km = 2)
+
+pdf(paste0(PATH_FIG_HEATMAPS, "TCGA_clusters_Fibroblast_markers", ".pdf"), width = 8, height = 8)
+draw(hmap, heatmap_legend_side="left", annotation_legend_side="right")
+dev.off()
+
+column_order <- column_order(hmap)
+sampleIDs <- colnames(expr_df)
+cluster1 <- sampleIDs[column_order$`1`]
+print(length(cluster1))
+cluster2 <- sampleIDs[column_order$`2`]
+print(length(cluster2))
+cluster1_N1 <- cluster1[cluster1 %in% rownames(annot_df)[annot_df$LNstatus=="N1"]]
+cluster2_N1 <- cluster2[cluster2 %in% rownames(annot_df)[annot_df$LNstatus=="N1"]]
+print(length(cluster1_N1))
+print(length(cluster2_N1))
+
+ratio1 = length(cluster1_N1)/length(cluster1)
+ratio2 = length(cluster2_N1)/length(cluster2)
+
+if (ratio1>ratio2){
+  print(fisher.test(matrix(c(length(cluster1_N1), length(cluster1)-length(length(cluster1_N1)),
+                             length(cluster2_N1), length(cluster2)-length(cluster2_N1)), nrow=2), 
+                    alternative="greater"))
+  Fibroblast_TCGA_aggressive = sampleIDs[column_order$`1`]
+  print("cluster1 contains a higher number of N1 sample")
+} else {
+  print(fisher.test(matrix(c(length(cluster2_N1), length(cluster2)-length(cluster2_N1),
+                             length(cluster1_N1), length(cluster1)-length(cluster1_N1)), nrow=2), 
+                    alternative="greater"))
+  Fibroblast_TCGA_aggressive = sampleIDs[column_order$`2`]
+  print("cluster2 contains a higher number of N1 sample")
+}
+
+tcga_info$cluster <- ifelse(tcga_info$sampleID %in% cluster1, "C1", "C2")
+write.csv(tcga_info, paste0(PATH_FIGSHARE, "SupplementaryFigure86_Data", ".csv"), row.names = FALSE)
+# 2. KM
+info <- tcga_info
+fit <- survfit(Surv(endpoint.time, endpoint) ~ cluster, data=info)
+clusters <- levels(as.factor(info$cluster))
+pval <- surv_pvalue(fit)$pval
+print(pval)
+ggsurv <- ggsurvplot(fit, data = info, size = 1, ylab = "PFI", palette = c("#E7B800", "#2E9FDF"), 
+                     conf.int = TRUE, pval = TRUE, risk.table = TRUE, 
+                     risk.table.col = "strata",censor.shape="|", legend.labs = c(clusters),  
+                     risk.table.height = 0.25, ggtheme = theme_bw())
+
+pdf(paste0(PATH_FIG_SURVIVAL, "TCGA_SC_clusters_Fibroblast_markers", ".pdf"), width = 6, height = 5)
+print(ggsurv, newpage = FALSE)
+dev.off()
+
+```
+```{r}
+length(Luminal_TCGA_aggressive)
+length(Fibroblast_TCGA_aggressive)
+common = intersect(Luminal_TCGA_aggressive, Fibroblast_TCGA_aggressive)
+length(common)
+
+info <- tcga_info
+info$cluster <- ifelse(tcga_info$sampleID %in% common, "C1", "C2")
+fit <- survfit(Surv(endpoint.time, endpoint) ~ cluster, data=info)
+clusters <- levels(as.factor(info$cluster))
+pval <- surv_pvalue(fit)$pval
+
+ggsurv <- ggsurvplot(fit, data = info, size = 1, ylab = "PFI", palette = c("#E7B800", "#2E9FDF"), 
+                     conf.int = TRUE, pval = TRUE, risk.table = TRUE, 
+                     risk.table.col = "strata",censor.shape="|", legend.labs = c(clusters),  
+                     risk.table.height = 0.25, ggtheme = theme_bw())
+
+pdf(paste0(PATH_FIG_SURVIVAL, "TCGA_SC_clusters_aggressive_LF_markers", ".pdf"), width = 6, height = 5)
+print(ggsurv, newpage = FALSE)
+dev.off()
+```
+# For Basal cells
+```{r}
+RP_Basal_sign <- subset(chen_primaries, subset = celltype=="Basal/Intermediate",  features = signature_chen)
+RP_Basal_sign <- FindVariableFeatures(RP_Basal_sign, selection.method = "vst")
+RP_Basal_sign <- ScaleData(RP_Basal_sign)
+RP_Basal_sign <- RunPCA(RP_Basal_sign, features = VariableFeatures(RP_Basal_sign))
+
+std <- Stdev(RP_Basal_sign, reduction = "pca")
+var <- std^2
+PC_1 <- round(var[1]/sum(var),4)
+PC_2 <- round(var[2]/sum(var),4)
+PC_1 <- paste("PC1", PC_1*100, "%")
+PC_2 <- paste("PC2", PC_2*100, "%")
+
+Basal_pca_loadings_sign <- Loadings(object = RP_Basal_sign, reduction = "pca")
+Basal_pca_embeddings_sign <- data.frame(Embeddings(object = RP_Basal_sign, reduction = "pca"))
+Basal_dev <- rownames(Basal_pca_embeddings_sign[(Basal_pca_embeddings_sign$PC_2>=5),])
+
+write.csv(Basal_pca_loadings_sign[,c("PC_1", "PC_2")], paste0(PATH_FIGSHARE, "SupplementaryFigure77right_Data", ".csv"))
+write.csv(Basal_pca_embeddings_sign[, c("PC_1", "PC_2")], paste0(PATH_FIGSHARE, "SupplementaryFigure77left_Data", ".csv"))
+
+plot1 <- DimPlot(RP_Basal_sign, cells.highlight = Basal_dev,  reduction = "pca", cols="black")+labs(y=PC_2, x=PC_1)+ scale_color_manual(labels = c("Basal", "Basal_dev"), values = c("gray", "black"))+theme(legend.position = "bottom")
+plot2 <- VizDimLoadings(RP_Basal_sign, dims = 2, reduction = "pca")
+g <- grid.arrange(plot1, plot2, ncol=2, widths=c(1.1,0.9))
+ggsave(paste0(PATH_FIG_SCMARKERS, "SC_Basal", ".svg"), plot=g , width = 10, height = 5)
+```
+```{r}
+cellannot["cellids"] = gsub("-", '.', cellannot$cellID)
+cellannot[(cellannot$celltype=="Basal/Intermediate") & (cellannot$cellids%in%Basal_dev),]
+```
+
+```{r}
+RP_Basal_random_sign <- subset(chen_primaries, subset = celltype=="Basal/Intermediate",features = random_signature)
+RP_Basal_random_sign <- FindVariableFeatures(RP_Basal_random_sign, selection.method = "vst")
+RP_Basal_random_sign <- ScaleData(RP_Basal_random_sign)
+RP_Basal_random_sign <- RunPCA(RP_Basal_random_sign, features = VariableFeatures(RP_Basal_random_sign))
+
+std <- Stdev(RP_Basal_random_sign, reduction = "pca")
+var <- std^2
+PC_1 <- round(var[1]/sum(var),4)
+PC_2 <- round(var[2]/sum(var),4)
+PC_1 <- paste("PC1", PC_1*100, "%")
+PC_2 <- paste("PC2", PC_2*100, "%")
+
+Basal_pca_loadings_random_sign <- Loadings(object = RP_Basal_random_sign, reduction = "pca")
+Basal_pca_embeddings_random_sign <- data.frame(Embeddings(object = RP_Basal_random_sign, reduction = "pca"))
+write.csv(Basal_pca_embeddings_random_sign[, c("PC_1", "PC_2")], paste0(PATH_FIGSHARE, "SupplementaryFigure78left_Data", ".csv"))
+plot1 <- DimPlot(RP_Basal_random_sign, cells.highlight = Basal_dev,  reduction = "pca", cols="black")+labs(y=PC_2, x=PC_1)+ scale_color_manual(labels = c("Basal", "Basal_dev"), values = c("gray", "black"))+theme(legend.position = "bottom")
+
+RP_Basal_all_genes <- subset(chen_primaries, subset = celltype=="Basal/Intermediate")
+RP_Basal_all_genes <- FindVariableFeatures(RP_Basal_all_genes, selection.method = "vst")
+RP_Basal_all_genes <- ScaleData(RP_Basal_all_genes)
+RP_Basal_all_genes <- RunPCA(RP_Basal_all_genes, features = VariableFeatures(RP_Basal_all_genes))
+
+std <- Stdev(RP_Basal_all_genes, reduction = "pca")
+var <- std^2
+PC_1 <- round(var[1]/sum(var),4)
+PC_2 <- round(var[2]/sum(var),4)
+PC_1 <- paste("PC1", PC_1*100, "%")
+PC_2 <- paste("PC2", PC_2*100, "%")
+
+Basal_pca_loadings_all_genes <- Loadings(object = RP_Basal_all_genes, reduction = "pca")
+Basal_pca_embeddings_all_genes <- data.frame(Embeddings(object = RP_Basal_all_genes, reduction = "pca"))
+write.csv(Basal_pca_embeddings_all_genes[, c("PC_1", "PC_2")], paste0(PATH_FIGSHARE, "SupplementaryFigure78right_Data", ".csv"))
+
+plot2 <- DimPlot(RP_Basal_all_genes, cells.highlight = Basal_dev,  reduction = "pca", cols="black")+labs(y=PC_2, x=PC_1)+ scale_color_manual(labels = c("Basal", "Basal_dev"), values = c("gray", "black"))+theme(legend.position = "bottom")
+g <- grid.arrange(plot1, plot2, ncol=2, widths=c(1,1))
+ggsave(paste0(PATH_FIG_SCMARKERS, "SC_Basal_random_all", ".svg"), plot=g , width = 10, height = 5)
+```
+
+# Endothelial cells
+```{r}
+RP_Endothelial_sign <- subset(chen_primaries, subset = celltype=="Endothelial",  features = signature_chen)
+RP_Endothelial_sign <- FindVariableFeatures(RP_Endothelial_sign, selection.method = "vst")
+RP_Endothelial_sign <- ScaleData(RP_Endothelial_sign)
+RP_Endothelial_sign <- RunPCA(RP_Endothelial_sign, features = VariableFeatures(RP_Endothelial_sign))
+
+std <- Stdev(RP_Endothelial_sign, reduction = "pca")
+var <- std^2
+PC_1 <- round(var[1]/sum(var),4)
+PC_2 <- round(var[2]/sum(var),4)
+PC_1 <- paste("PC1", PC_1*100, "%")
+PC_2 <- paste("PC2", PC_2*100, "%")
+
+Endothelial_pca_loadings_sign <- Loadings(object = RP_Endothelial_sign, reduction = "pca")
+Endothelial_pca_embeddings_sign <- data.frame(Embeddings(object = RP_Endothelial_sign, reduction = "pca"))
+
+write.csv(Endothelial_pca_loadings_sign[,c("PC_1", "PC_2")], paste0(PATH_FIGSHARE, "SupplementaryFigure91right_Data", ".csv"))
+write.csv(Endothelial_pca_embeddings_sign[, c("PC_1", "PC_2")], paste0(PATH_FIGSHARE, "SupplementaryFigure91left_Data", ".csv"))
+
+
+Endothelial_dev <- rownames(Endothelial_pca_embeddings_sign[(Endothelial_pca_embeddings_sign$PC_1<=-2),])
+
+plot1 <- DimPlot(RP_Endothelial_sign, cells.highlight = Endothelial_dev,  reduction = "pca", cols="black")+labs(y=PC_2, x=PC_1)+ scale_color_manual(labels = c("Endothelial", "Endothelial_dev"), values = c("gray", "black"))+theme(legend.position = "bottom")
+plot2 <- VizDimLoadings(RP_Endothelial_sign, dims = 2, reduction = "pca")
+g <- grid.arrange(plot1, plot2, ncol=2, widths=c(1.1,0.9))
+ggsave(paste0(PATH_FIG_SCMARKERS, "SC_Endothelial", ".svg"), plot=g , width = 10, height = 5)
+```
+
+```{r}
+RP_Endothelial_random_sign <- subset(chen_primaries, subset = celltype=="Endothelial",features = random_signature)
+RP_Endothelial_random_sign <- FindVariableFeatures(RP_Endothelial_random_sign, selection.method = "vst")
+RP_Endothelial_random_sign <- ScaleData(RP_Endothelial_random_sign)
+RP_Endothelial_random_sign <- RunPCA(RP_Endothelial_random_sign, features = VariableFeatures(RP_Endothelial_random_sign))
+
+std <- Stdev(RP_Endothelial_random_sign, reduction = "pca")
+var <- std^2
+PC_1 <- round(var[1]/sum(var),4)
+PC_2 <- round(var[2]/sum(var),4)
+PC_1 <- paste("PC1", PC_1*100, "%")
+PC_2 <- paste("PC2", PC_2*100, "%")
+
+Endothelial_pca_loadings_random_sign <- Loadings(object = RP_Endothelial_random_sign, reduction = "pca")
+Endothelial_pca_embeddings_random_sign <- data.frame(Embeddings(object = RP_Endothelial_random_sign, reduction = "pca"))
+write.csv(Endothelial_pca_embeddings_random_sign[, c("PC_1", "PC_2")], paste0(PATH_FIGSHARE, "SupplementaryFigure92left_Data", ".csv"))
+
+plot1 <- DimPlot(RP_Endothelial_random_sign, cells.highlight = Endothelial_dev,  reduction = "pca", cols="black")+labs(y=PC_2, x=PC_1)+ scale_color_manual(labels = c("Endothelial", "Endothelial_dev"), values = c("gray", "black"))+theme(legend.position = "bottom")
+
+RP_Endothelial_all_genes <- subset(chen_primaries, subset = celltype=="Endothelial")
+RP_Endothelial_all_genes <- FindVariableFeatures(RP_Endothelial_all_genes, selection.method = "vst")
+RP_Endothelial_all_genes <- ScaleData(RP_Endothelial_all_genes)
+RP_Endothelial_all_genes <- RunPCA(RP_Endothelial_all_genes, features = VariableFeatures(RP_Endothelial_all_genes))
+
+std <- Stdev(RP_Endothelial_all_genes, reduction = "pca")
+var <- std^2
+PC_1 <- round(var[1]/sum(var),4)
+PC_2 <- round(var[2]/sum(var),4)
+PC_1 <- paste("PC1", PC_1*100, "%")
+PC_2 <- paste("PC2", PC_2*100, "%")
+
+Endothelial_pca_loadings_all_genes <- Loadings(object = RP_Endothelial_all_genes, reduction = "pca")
+Endothelial_pca_embeddings_all_genes <- data.frame(Embeddings(object = RP_Endothelial_all_genes, reduction = "pca"))
+write.csv(Endothelial_pca_embeddings_all_genes[, c("PC_1", "PC_2")], paste0(PATH_FIGSHARE, "SupplementaryFigure92right_Data", ".csv"))
+
+plot2 <- DimPlot(RP_Endothelial_all_genes, cells.highlight = Endothelial_dev,  reduction = "pca", cols="black")+labs(y=PC_2, x=PC_1)+ scale_color_manual(labels = c("Endothelial", "Endothelial_dev"), values = c("gray", "black"))+theme(legend.position = "bottom")
+g <- grid.arrange(plot1, plot2, ncol=2, widths=c(1,1))
+ggsave(paste0(PATH_FIG_SCMARKERS, "SC_Endothelial_random_all", ".svg"), plot=g , width = 10, height = 5)
+
+```
+
+
+
+
+```{r}
+Endothelial_Jef<- readRDS("/home/bioit/ldschaet/Desktop/Paper3/SC_analysis/231005_seuratObj_chen_endothelial_no_metastatic.rds")
+Endothelial_info <- Endothelial_Jef@meta.data
+table(Endothelial_info[rownames(Endothelial_info)%in%Endothelial_dev,]$cell.type.jef.L2)
+table(Endothelial_info$cell.type.jef.L2)
+length(Endothelial_dev)
+```
+```{r}
+status <- as.character(Endothelial_Jef@meta.data$status)
+status[status=="malignant"] <- "cancerous"
+status[status=="non-malignant"] <- "non-cancerous"
+```
+
+
+
+```{r}
+RP_Endothelial <- subset(chen_primaries, subset = celltype=="Endothelial")
+Endothelial_dev_markers_sign <- FindMarkers(RP_Endothelial, ident.1 = Endothelial_dev, 
+                                            features = signature_chen, only.pos = TRUE)
+Endothelial_dev_markers_sign <- Endothelial_dev_markers_sign[Endothelial_dev_markers_sign$p_val_adj<0.05,]
+Endothelial_dev_markers_all <- FindMarkers(RP_Endothelial, ident.1 = Endothelial_dev, only.pos = TRUE)
+Endothelial_dev_markers_all <- Endothelial_dev_markers_all[Endothelial_dev_markers_all$p_val_adj<0.05,]
+Endothelial_dev_markers_sign <- Endothelial_dev_markers_sign[order(Endothelial_dev_markers_sign$p_val_adj, Endothelial_dev_markers_sign$avg_log2FC),]
+
+Endothelial_dev_markers_all["sign"] <- ifelse(rownames(Endothelial_dev_markers_all)%in%signature_chen, TRUE, FALSE)
+write.table(Endothelial_dev_markers_all, paste0(PATH_DESEQ2, "Endothelial_dev_findmarkers_all", ".tsv"), sep="\t", row.names = T)
+
+dim(Endothelial_dev_markers_sign)
+dim(Endothelial_dev_markers_all)
+```
+
+```{r}
+chen_RP_Endothelial_dev <- chen_primaries
+chen_RP_Endothelial_dev$cell.type <- ifelse(colnames(chen_RP_Endothelial_dev) %in% Endothelial_dev, "Endothelial_dev", chen_RP_Endothelial_dev$celltype)
+Idents(chen_RP_Endothelial_dev) = chen_RP_Endothelial_dev$cell.type
+sorted_idents <- c("Luminal",  "Basal/Intermediate", 'Fibroblast','Endothelial', "Endothelial_dev",  'Monocytic', 'Mast', 'T','B')
+Idents(chen_RP_Endothelial_dev) <- factor(x =Idents(chen_RP_Endothelial_dev), levels = sorted_idents)
+
+g <- DotPlot(chen_RP_Endothelial_dev, features = rownames(Endothelial_dev_markers_sign[order(Endothelial_dev_markers_sign$avg_log2FC),]))+ RotatedAxis() + coord_flip()
+ggsave(paste0(PATH_FIG_DOTPLOT, "Endothelial_dotplot", ".svg"), plot=g , width = 6, height = 6)
+```
+
+```{r}
+set.seed(3)
+Endothelial_res = Endothelial_dev_markers_all
+Endothelial_res$gene = rownames(Endothelial_res)
+Endothelial_res <- Endothelial_res[,c("gene", "avg_log2FC")]
+row.names(Endothelial_res) <- NULL
+Endothelial_ranks <- deframe(Endothelial_res)
+
+pathways.hallmark <- gmtPathways("/home/bioit/ldschaet/Desktop/GSEA/h.all.v2023.2.Hs.symbols.gmt")
+Endothelial_markers_fgsea_res<- fgsea(pathways=pathways.hallmark, stats=Endothelial_ranks, nperm=1000)
+Endothelial_markers_fgsea_res <- Endothelial_markers_fgsea_res %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+Endothelial_markers_fgsea_res %>% 
+  dplyr::select(-leadingEdge, -ES, -nMoreExtreme) %>% 
+  arrange(padj) 
+
+Endothelial_markers_fgsea_res <- data.frame(Endothelial_markers_fgsea_res)
+
+check_overlap <- function(leading_genes, signature_genes) {
+  return(intersect(leading_genes, signature_genes))
+}
+
+Endothelial_markers_fgsea_res$overlap <- sapply(Endothelial_markers_fgsea_res$leadingEdge, check_overlap,  signature_genes=signature)
+Endothelial_markers_fgsea_res$leadingEdge <- sapply(Endothelial_markers_fgsea_res$leadingEdge, function(x) paste(x, collapse = ","))
+Endothelial_markers_fgsea_res$overlap <- sapply(Endothelial_markers_fgsea_res$overlap, function(x) paste(x, collapse = ","))
+Endothelial_markers_fgsea_res <- Endothelial_markers_fgsea_res[,c("pathway", "padj", "ES","NES","size","leadingEdge","overlap")]
+write.table(Endothelial_markers_fgsea_res, paste0(PATH_GSEA, "Endothelial_markers_fgsea_res_all", ".tsv"), sep="\t", row.names = F)
+
+Endothelial_gsea <- ggplot(Endothelial_markers_fgsea_res, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.05)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score") + 
+  theme_minimal()
+ggsave(paste0(PATH_FIG_GSEA, "Endothelial_gsea_all", ".svg"), plot=Endothelial_gsea , width = 8, height = 10)
+
+
+Endothelial_res = Endothelial_dev_markers_sign
+Endothelial_res$gene = rownames(Endothelial_res)
+Endothelial_res <- Endothelial_res[,c("gene", "avg_log2FC")]
+row.names(Endothelial_res) <- NULL
+Endothelial_ranks <- deframe(Endothelial_res)
+
+pathways.hallmark <- gmtPathways("/home/bioit/ldschaet/Desktop/GSEA/h.all.v2023.2.Hs.symbols.gmt")
+Endothelial_markers_fgsea_res<- fgsea(pathways=pathways.hallmark, stats=Endothelial_ranks, nperm=1000)
+Endothelial_markers_fgsea_res <- Endothelial_markers_fgsea_res %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+Endothelial_markers_fgsea_res %>% 
+  dplyr::select(-leadingEdge, -ES, -nMoreExtreme) %>% 
+  arrange(padj) 
+
+Endothelial_markers_fgsea_res <- data.frame(Endothelial_markers_fgsea_res)
+
+check_overlap <- function(leading_genes, signature_genes) {
+  return(intersect(leading_genes, signature_genes))
+}
+
+Endothelial_markers_fgsea_res$overlap <- sapply(Endothelial_markers_fgsea_res$leadingEdge, check_overlap,  signature_genes=signature)
+Endothelial_markers_fgsea_res$leadingEdge <- sapply(Endothelial_markers_fgsea_res$leadingEdge, function(x) paste(x, collapse = ","))
+Endothelial_markers_fgsea_res$overlap <- sapply(Endothelial_markers_fgsea_res$overlap, function(x) paste(x, collapse = ","))
+Endothelial_markers_fgsea_res <- Endothelial_markers_fgsea_res[,c("pathway", "padj", "ES","NES","size","leadingEdge","overlap")]
+write.table(Endothelial_markers_fgsea_res, paste0(PATH_GSEA, "Endothelial_markers_fgsea_res_sign", ".tsv"), sep="\t", row.names = F)
+
+Endothelial_gsea <- ggplot(Endothelial_markers_fgsea_res, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.05)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score") + 
+  theme_minimal()
+ggsave(paste0(PATH_FIG_GSEA, "Endothelial_gsea_sign", ".svg"), plot=Endothelial_gsea , width = 8, height = 10)
+```
+
+
+
+```{r}
+Endothelial_Jef_info <- Endothelial_Jef@meta.data
+Endothelial_Jef$cell.type <- ifelse(rownames(Endothelial_info) %in% Endothelial_dev, "Endothelial_dev", "Endothelial")
+Endothelial_Jef$cell.type <- factor(Endothelial_Jef$cell.type)
+Idents(Endothelial_Jef) <-Endothelial_Jef$cell.type 
+Endothelial_Jef$cell.subtype <- Endothelial_Jef_info$cell.type.jef.L2
+Endothelial_Jef <- subset(Endothelial_Jef, subset = cell.subtype %in%  c("Arterial ECs", 
+                                                                      "ECs (Unfolded prot resp)", 
+                                                                      "Endothelial-Pericyte", 
+                                                                      "HEVs and Venous ECs",
+                                                                      "Tip cells"))
+Endothelial_Jef$cell.subtype <- factor(Endothelial_Jef$cell.subtype, levels =  c("Arterial ECs", 
+                                                                      "ECs (Unfolded prot resp)", 
+                                                                      "Endothelial-Pericyte", 
+                                                                      "HEVs and Venous ECs",
+                                                                      "Tip cells"))
+Endothelial_Jef$cell.status <- factor(status)
+Endothelial_Jef_info <- Endothelial_Jef@meta.data
+
+mat <- table(Endothelial_Jef_info$seurat_clusters, Endothelial_Jef_info$cell.subtype)
+mat <- scale(mat)
+Idents(Endothelial_Jef) <- "cell.type"
+
+Endothelial_markers <- rownames(Endothelial_dev_markers_sign[order(-Endothelial_dev_markers_sign$avg_log2FC),])
+
+
+Endothelial_labels_colors = signature_df[Endothelial_markers,"color"]
+
+tip <- c('ESM1', 'INSR')
+aec <- c('FBLN5', 'GJA5', 'FN1')
+hev <-  c('ACKR1', 'SELP')
+lec <- c('PROX1')
+peri <- c('NDUFA4L2', 'ACTA2', 'RGS5', 'HIGD1B')
+Endothelial_litterature_markers <-c(aec, peri, hev, lec, tip)
+Endothelial_litterature_markers <- intersect(Endothelial_litterature_markers, rownames(Endothelial_Jef))
+
+genes <- unlist(Endothelial_litterature_markers) # %>% unique()
+
+columns_to_plot <- c("cell.type", "cell.subtype", "cell.status") 
+Endothelial_Jef_info <- Endothelial_Jef_info[, columns_to_plot]
+write.csv(Endothelial_Jef_info, paste0(PATH_FIGSHARE, "SupplementaryFigure94middle_Data", ".csv"))
+
+annot_cols <- list(
+  cell.type = setNames(c("blue", "red"), levels(Endothelial_Jef_info$cell.type)),
+  cell.subtype = setNames(c("orange", "purple", "green", "darkblue", "gray"),
+                          levels(Endothelial_Jef_info$cell.subtype)),
+    cell.status = setNames(c("red", "blue", "grey"), levels(Luminal_Jef_info$cell.status)))
+
+heatmapAnnot <- rowAnnotation(
+  df = Endothelial_Jef_info,
+  show_annotation_name = TRUE,
+  show_legend = TRUE,
+  col = annot_cols)
+
+Endothelial_Jef <- ScaleData(Endothelial_Jef, features = rownames(Endothelial_Jef), verbose = FALSE)
+
+plot_mat = t(as.matrix(Endothelial_Jef[["RNA"]]@scale.data[genes,]))
+write.csv(plot_mat, paste0(PATH_FIGSHARE, "SupplementaryFigure94left_Data", ".csv"))
+
+ht <- Heatmap(plot_mat,
+              show_column_names = T, 
+              show_row_names = F,
+              column_title_gp = gpar(fontsize = 6),
+              row_split = Endothelial_Jef_info[,c("cell.type", "cell.subtype")],
+              row_title = NULL,
+              clustering_method_rows = "complete",
+              cluster_columns = F, 
+              cluster_rows = F,
+              col = circlize::colorRamp2(c(-2,0,2), colors = c("#18528f", "white", "#a81d1d")),
+              left_annotation = heatmapAnnot,
+              show_heatmap_legend = F,
+              column_names_gp = gpar(fontfamily = "sans", fontsize = 7, fontface = "italic"))
+
+plot_mat = t(as.matrix(Endothelial_Jef[["RNA"]]@scale.data[Endothelial_markers,]))
+write.csv(plot_mat, paste0(PATH_FIGSHARE, "SupplementaryFigure94right_Data", ".csv"))
+
+ht2 <- Heatmap(matrix = plot_mat, 
+               show_column_names = T, 
+               show_row_names = F,
+               column_title_gp = gpar(fontsize = 6, rot = 45),
+               row_split = Endothelial_Jef_info[,c("cell.type", "cell.subtype")],
+               row_title = NULL,
+               clustering_method_rows = "complete",
+               cluster_columns = T, 
+               cluster_rows = F,
+               col = circlize::colorRamp2(c(-2,0,2), colors = c("#18528f", "white", "#a81d1d")),
+               show_heatmap_legend = T,
+               name = "expression.level",
+               column_names_gp = gpar(fontfamily = "sans", fontsize = 7, fontface = "italic", 
+                                      col=Endothelial_labels_colors))
+ht_list <- ht2 + ht
+pdf(paste0(PATH_FIG_HEATMAPS, "Endothelial_markers_sc", ".pdf"), width = 8, height = 6)
+draw(ht_list)
+dev.off()
+ht_list
+```
+```{r}
+DN_RP_zscores_Endothelial = DN_RP_zscores[Endothelial_markers,]
+DN_RP_info <- data.frame(samplestatus = ifelse(colnames(DN_RP_zscores_Endothelial) %in% DN_S, "S",
+                                               ifelse(colnames(DN_RP_zscores_Endothelial) %in% DN_NS, "NS", NA)))
+rownames(DN_RP_info) <- colnames(DN_RP_zscores)
+DN_RP_info$patID <- sapply(rownames(DN_RP_info), function(x) str_split(x, "_")[[1]][2])
+DN_RP_info$patnum <- as.numeric(unlist(str_extract_all(DN_RP_info$patID, "\\d+")))
+DN_RP_info <- DN_RP_info[order(DN_RP_info$patnum, DN_RP_info$samplestatus),]
+DN_RP_info$patID <- factor(DN_RP_info$patID, levels=unique(DN_RP_info$patID))
+
+colours <- list('samplestatus' = c('S' = 'purple', 'NS' = 'orange'))
+colAnn <- HeatmapAnnotation(df = DN_RP_info[,c("patID", "samplestatus")],
+                            which = 'col',
+                            col = colours,
+                            annotation_width = unit(c(1, 4), 'cm'),
+                            gap = unit(1, 'mm'))
+
+hmap <- Heatmap(DN_RP_zscores_Endothelial[,rownames(DN_RP_info)],  column_split = DN_RP_info$patnum, 
+                show_column_names = TRUE, show_row_names = TRUE, name="z-scores",
+                top_annotation=colAnn, cluster_columns = FALSE, cluster_rows = FALSE)
+
+pdf(paste0(PATH_FIG_HEATMAPS, "DN_Endothelial_markers_signature", ".pdf"), width = 8, height = 8)
+draw(hmap, heatmap_legend_side="left", annotation_legend_side="right")
+dev.off()
+```
+
+```{r}
+LA_RP_zscores_Endothelial = LA_RP_zscores[Endothelial_markers,]
+LA_RP_info <- data.frame(samplestatus = ifelse(colnames(LA_RP_zscores_Endothelial) %in% LA_MS, "S1", ifelse(colnames(LA_RP_zscores_Endothelial) %in% setdiff(LA_S, LA_MS), "S", ifelse(colnames(LA_RP_zscores_Endothelial) %in% LA_NS, "NS", NA))))
+                       
+rownames(LA_RP_info) <- colnames(LA_RP_zscores)
+LA_RP_info$patID <- sapply(rownames(LA_RP_info), function(x) str_split(x, "_")[[1]][2])
+LA_RP_info$patnum <- as.numeric(unlist(str_extract_all(LA_RP_info$patID, "\\d+")))
+LA_RP_info <- LA_RP_info[order(LA_RP_info$patnum, LA_RP_info$samplestatus),]
+LA_RP_info$patID <- factor(LA_RP_info$patID, levels=unique(LA_RP_info$patID))
+
+colours <- list('samplestatus' = c('S1' = 'darkviolet', 'S'= 'purple', 'NS' = 'orange'))
+colAnn <- HeatmapAnnotation(df = LA_RP_info[,c("patID", "samplestatus")],
+                            which = 'col',
+                            col = colours,
+                            annotation_width = unit(c(1, 4), 'cm'),
+                            gap = unit(1, 'mm'))
+
+hmap <- Heatmap(LA_RP_zscores_Endothelial[,rownames(LA_RP_info)],  column_split = LA_RP_info$patnum, 
+                show_column_names = TRUE, show_row_names = TRUE, name="z-scores",
+                top_annotation=colAnn, cluster_columns = FALSE, cluster_rows = FALSE)
+
+pdf(paste0(PATH_FIG_HEATMAPS, "LA_Endothelial_markers_signature", ".pdf"), width = 14, height = 8)
+draw(hmap, heatmap_legend_side="left", annotation_legend_side="right")
+dev.off()
+```
+
+# Remove endothelial pericyte and previously identified deviating endothelial cells
+```{r}
+tokeep <- rownames(Endothelial_Jef_info[(Endothelial_Jef_info$cell.subtype!="Endothelial-Pericyte")
+                                         &(Endothelial_Jef_info$cell.type!="Endothelial_dev"),])
+
+RP_Endothelial_sign <- subset(chen_primaries, subset = celltype=="Endothelial",  features = signature_chen)
+RP_Endothelial_sign <- RP_Endothelial_sign[,colnames(RP_Endothelial_sign) %in% tokeep]
+RP_Endothelial_sign <- FindVariableFeatures(RP_Endothelial_sign, selection.method = "vst")
+RP_Endothelial_sign <- ScaleData(RP_Endothelial_sign)
+RP_Endothelial_sign <- RunPCA(RP_Endothelial_sign, features = VariableFeatures(RP_Endothelial_sign))
+
+std <- Stdev(RP_Endothelial_sign, reduction = "pca")
+var <- std^2
+PC_1 <- round(var[1]/sum(var),4)
+PC_2 <- round(var[2]/sum(var),4)
+PC_1 <- paste("PC1", PC_1*100, "%")
+PC_2 <- paste("PC2", PC_2*100, "%")
+
+Endothelial_pca_loadings_sign <- Loadings(object = RP_Endothelial_sign, reduction = "pca")
+Endothelial_pca_embeddings_sign <- data.frame(Embeddings(object = RP_Endothelial_sign, reduction = "pca"))
+
+write.csv(Endothelial_pca_loadings_sign[,c("PC_1", "PC_2")], paste0(PATH_FIGSHARE, "SupplementaryFigure95right_Data", ".csv"))
+write.csv(Endothelial_pca_embeddings_sign[, c("PC_1", "PC_2")], paste0(PATH_FIGSHARE, "SupplementaryFigure95left_Data", ".csv"))
+
+Endothelial_dev <- rownames(Endothelial_pca_embeddings_sign[(Endothelial_pca_embeddings_sign$PC_2>=2.5),])
+
+plot1 <- DimPlot(RP_Endothelial_sign, cells.highlight = Endothelial_dev,  reduction = "pca", cols="black")+labs(y=PC_2, x=PC_1)+ scale_color_manual(labels = c("Endothelial", "Endothelial_dev"), values = c("gray", "black"))+theme(legend.position = "bottom")
+plot2 <- VizDimLoadings(RP_Endothelial_sign, dims = 2, reduction = "pca")
+g <- grid.arrange(plot1, plot2, ncol=2, widths=c(1.1,0.9))
+ggsave(paste0(PATH_FIG_SCMARKERS, "SC_Endothelial_withoutdoublets", ".svg"), plot=g , width = 10, height = 5)
+```
+```{r}
+tokeep <- rownames(Endothelial_Jef_info[(Endothelial_Jef_info$cell.subtype!="Endothelial-Pericyte")
+                                         &(Endothelial_Jef_info$cell.type!="Endothelial_dev"),])
+
+RP_Endothelial_random_sign <- subset(chen_primaries, subset = celltype=="Endothelial",features = random_signature)
+RP_Endothelial_random_sign <- RP_Endothelial_random_sign[,colnames(RP_Endothelial_random_sign) %in% tokeep]
+
+RP_Endothelial_random_sign <- FindVariableFeatures(RP_Endothelial_random_sign, selection.method = "vst")
+RP_Endothelial_random_sign <- ScaleData(RP_Endothelial_random_sign)
+RP_Endothelial_random_sign <- RunPCA(RP_Endothelial_random_sign, features = VariableFeatures(RP_Endothelial_random_sign))
+
+std <- Stdev(RP_Endothelial_random_sign, reduction = "pca")
+var <- std^2
+PC_1 <- round(var[1]/sum(var),4)
+PC_2 <- round(var[2]/sum(var),4)
+PC_1 <- paste("PC1", PC_1*100, "%")
+PC_2 <- paste("PC2", PC_2*100, "%")
+
+Endothelial_pca_loadings_random_sign <- Loadings(object = RP_Endothelial_random_sign, reduction = "pca")
+Endothelial_pca_embeddings_random_sign <- data.frame(Embeddings(object = RP_Endothelial_random_sign, reduction = "pca"))
+write.csv(Endothelial_pca_embeddings_random_sign[, c("PC_1", "PC_2")], paste0(PATH_FIGSHARE, "SupplementaryFigure96left_Data", ".csv"))
+
+plot1 <- DimPlot(RP_Endothelial_random_sign, cells.highlight = Endothelial_dev,  reduction = "pca", cols="black")+labs(y=PC_2, x=PC_1)+ scale_color_manual(labels = c("Endothelial", "Endothelial_dev"), values = c("gray", "black"))+theme(legend.position = "bottom")
+
+RP_Endothelial_all_genes <- subset(chen_primaries, subset = celltype=="Endothelial")
+RP_Endothelial_all_genes <- FindVariableFeatures(RP_Endothelial_all_genes, selection.method = "vst")
+RP_Endothelial_all_genes <- ScaleData(RP_Endothelial_all_genes)
+RP_Endothelial_all_genes <- RunPCA(RP_Endothelial_all_genes, features = VariableFeatures(RP_Endothelial_all_genes))
+
+std <- Stdev(RP_Endothelial_all_genes, reduction = "pca")
+var <- std^2
+PC_1 <- round(var[1]/sum(var),4)
+PC_2 <- round(var[2]/sum(var),4)
+PC_1 <- paste("PC1", PC_1*100, "%")
+PC_2 <- paste("PC2", PC_2*100, "%")
+
+Endothelial_pca_loadings_all_genes <- Loadings(object = RP_Endothelial_all_genes, reduction = "pca")
+Endothelial_pca_embeddings_all_genes <- data.frame(Embeddings(object = RP_Endothelial_all_genes, reduction = "pca"))
+write.csv(Endothelial_pca_embeddings_all_genes[, c("PC_1", "PC_2")], paste0(PATH_FIGSHARE, "SupplementaryFigure96right_Data", ".csv"))
+
+plot2 <- DimPlot(RP_Endothelial_all_genes, cells.highlight = Endothelial_dev,  reduction = "pca", cols="black")+labs(y=PC_2, x=PC_1)+ scale_color_manual(labels = c("Endothelial", "Endothelial_dev"), values = c("gray", "black"))+theme(legend.position = "bottom")
+g <- grid.arrange(plot1, plot2, ncol=2, widths=c(1,1))
+ggsave(paste0(PATH_FIG_SCMARKERS, "SC_Endothelial_withoudoublets_random_all", ".svg"), plot=g , width = 10, height = 5)
+
+```
+
+
+
+
+
+```{r}
+RP_Endothelial <- subset(chen_primaries, subset = celltype=="Endothelial")
+RP_Endothelial <- RP_Endothelial[,colnames(RP_Endothelial) %in% tokeep]
+Endothelial_dev_markers_sign <- FindMarkers(RP_Endothelial, ident.1 = Endothelial_dev, only.pos=TRUE,
+                                            features = signature_chen)
+Endothelial_dev_markers_all <- FindMarkers(RP_Endothelial, ident.1 = Endothelial_dev, only.pos=TRUE,)
+Endothelial_dev_markers_all <- Endothelial_dev_markers_all[Endothelial_dev_markers_all$p_val_adj<0.05,]
+Endothelial_dev_markers_all["sign"] <- ifelse(rownames(Endothelial_dev_markers_all)%in%signature_chen, TRUE, FALSE)
+write.table(Endothelial_dev_markers_all, paste0(PATH_DESEQ2, "Endothelial_nodoublets_dev_findmarkers_all", ".tsv"), sep="\t", row.names = T)
+
+dim(Endothelial_dev_markers_sign)
+dim(Endothelial_dev_markers_all)
+```
+
+
+```{r}
+set.seed(3)
+Endothelial_res = Endothelial_dev_markers_all
+Endothelial_res$gene = rownames(Endothelial_res)
+Endothelial_res <- Endothelial_res[,c("gene", "avg_log2FC")]
+row.names(Endothelial_res) <- NULL
+Endothelial_ranks <- deframe(Endothelial_res)
+
+pathways.hallmark <- gmtPathways("/home/bioit/ldschaet/Desktop/GSEA/h.all.v2023.2.Hs.symbols.gmt")
+Endothelial_markers_fgsea_res<- fgsea(pathways=pathways.hallmark, stats=Endothelial_ranks, nperm=1000)
+Endothelial_markers_fgsea_res <- Endothelial_markers_fgsea_res %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+Endothelial_markers_fgsea_res %>% 
+  dplyr::select(-leadingEdge, -ES, -nMoreExtreme) %>% 
+  arrange(padj) 
+
+Endothelial_markers_fgsea_res <- data.frame(Endothelial_markers_fgsea_res)
+
+check_overlap <- function(leading_genes, signature_genes) {
+  return(intersect(leading_genes, signature_genes))
+}
+
+Endothelial_markers_fgsea_res$overlap <- sapply(Endothelial_markers_fgsea_res$leadingEdge, check_overlap,  signature_genes=signature)
+Endothelial_markers_fgsea_res$leadingEdge <- sapply(Endothelial_markers_fgsea_res$leadingEdge, function(x) paste(x, collapse = ","))
+Endothelial_markers_fgsea_res$overlap <- sapply(Endothelial_markers_fgsea_res$overlap, function(x) paste(x, collapse = ","))
+Endothelial_markers_fgsea_res <- Endothelial_markers_fgsea_res[,c("pathway", "padj", "ES","NES","size","leadingEdge","overlap")]
+write.table(Endothelial_markers_fgsea_res, paste0(PATH_GSEA, "Endothelial_nodoublets_markers_fgsea_res_all", ".tsv"), sep="\t", row.names = F)
+
+Endothelial_gsea <- ggplot(Endothelial_markers_fgsea_res, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.05)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score") + 
+  theme_minimal()
+ggsave(paste0(PATH_FIG_GSEA, "Endothelial_nodoublets_gsea_all", ".svg"), plot=Endothelial_gsea , width = 8, height = 10)
+
+
+Endothelial_res = Endothelial_dev_markers_sign
+Endothelial_res$gene = rownames(Endothelial_res)
+Endothelial_res <- Endothelial_res[,c("gene", "avg_log2FC")]
+row.names(Endothelial_res) <- NULL
+Endothelial_ranks <- deframe(Endothelial_res)
+
+pathways.hallmark <- gmtPathways("/home/bioit/ldschaet/Desktop/GSEA/h.all.v2023.2.Hs.symbols.gmt")
+Endothelial_markers_fgsea_res<- fgsea(pathways=pathways.hallmark, stats=Endothelial_ranks, nperm=1000)
+Endothelial_markers_fgsea_res <- Endothelial_markers_fgsea_res %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+Endothelial_markers_fgsea_res %>% 
+  dplyr::select(-leadingEdge, -ES, -nMoreExtreme) %>% 
+  arrange(padj) 
+
+Endothelial_markers_fgsea_res <- data.frame(Endothelial_markers_fgsea_res)
+
+check_overlap <- function(leading_genes, signature_genes) {
+  return(intersect(leading_genes, signature_genes))
+}
+
+Endothelial_markers_fgsea_res$overlap <- sapply(Endothelial_markers_fgsea_res$leadingEdge, check_overlap,  signature_genes=signature)
+Endothelial_markers_fgsea_res$leadingEdge <- sapply(Endothelial_markers_fgsea_res$leadingEdge, function(x) paste(x, collapse = ","))
+Endothelial_markers_fgsea_res$overlap <- sapply(Endothelial_markers_fgsea_res$overlap, function(x) paste(x, collapse = ","))
+Endothelial_markers_fgsea_res <- Endothelial_markers_fgsea_res[,c("pathway", "padj", "ES","NES","size","leadingEdge","overlap")]
+write.table(Endothelial_markers_fgsea_res, paste0(PATH_GSEA, "Endothelial_nodoublets_markers_fgsea_res_sign", ".tsv"), sep="\t", row.names = F)
+
+Endothelial_gsea <- ggplot(Endothelial_markers_fgsea_res, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.05)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score") + 
+  theme_minimal()
+ggsave(paste0(PATH_FIG_GSEA, "Endothelial_nodoublets_gsea_sign", ".svg"), plot=Endothelial_gsea , width = 8, height = 10)
+
+```
+
+
+
+
+
+```{r}
+chen_RP_Endothelial_dev <- chen_primaries
+chen_RP_Endothelial_dev$cell.type <- ifelse(colnames(chen_RP_Endothelial_dev) %in% Endothelial_dev, "Endothelial_dev", chen_RP_Endothelial_dev$celltype)
+Idents(chen_RP_Endothelial_dev) = chen_RP_Endothelial_dev$cell.type
+sorted_idents <- c("Luminal",  "Basal/Intermediate", 'Fibroblast','Endothelial', "Endothelial_dev",  'Monocytic', 'Mast', 'T','B')
+Idents(chen_RP_Endothelial_dev) <- factor(x =Idents(chen_RP_Endothelial_dev), levels = sorted_idents)
+
+g <- DotPlot(chen_RP_Endothelial_dev, features = rownames(Endothelial_dev_markers_sign[order(Endothelial_dev_markers_sign$avg_log2FC),]))+ RotatedAxis() + coord_flip()
+ggsave(paste0(PATH_FIG_DOTPLOT, "Endothelial_withoutdoublets_dotplot", ".svg"), plot=g , width = 6, height = 6)
+```
+
+
+```{r}
+Endothelial_Jef$type <- ifelse(rownames(Endothelial_info) %in% Endothelial_dev, "Endothelial_dev", "Endothelial")
+Idents(Endothelial_Jef) <- Endothelial_Jef@meta.data$type
+sorted_idents <- c("Luminal", "Basal/Intermediate", 'Fibroblast', 
+                   'Endothelial', 'Endothelial_dev', 'Monocytic', 'Mast', 'T','B')
+Idents(Endothelial_Jef) <- factor(x =Idents(Endothelial_Jef), levels = sorted_idents)
+Endothelial_Jef$cell.type <- factor(Endothelial_Jef$type)
+Endothelial_Jef$cell.subtype <- factor(Endothelial_Jef@meta.data$cell.type.jef.L2)
+Endothelial_Jef$cell.status <- factor(Endothelial_Jef$status)
+
+Endothelial_Jef <- subset(Endothelial_Jef, subset = cell.subtype %in% c("Arterial ECs", 
+                                                                      "ECs (Unfolded prot resp)", 
+                                                                      "Endothelial-Pericyte", 
+                                                                      "HEVs and Venous ECs",
+                                                                      "Tip cells"))
+Endothelial_Jef$cell.subtype <- factor(Endothelial_Jef$cell.subtype)
+Endothelial_info <- Endothelial_Jef@meta.data
+
+mat <- table(Endothelial_info$seurat_clusters, Endothelial_info$cell.subtype)
+mat <- scale(mat)
+Idents(Endothelial_Jef) <- "cell.type"
+
+Endothelial_markers <- rownames(Endothelial_dev_markers_sign[order(-Endothelial_dev_markers_sign$avg_log2FC),])
+Endothelial_labels_colors = signature_df[Endothelial_markers,"color"]
+
+tip <- c('ESM1', 'INSR')
+aec <- c('FBLN5', 'GJA5', 'FN1')
+hev <-  c('ACKR1', 'SELP')
+lec <- c('PROX1')
+peri <- c('NDUFA4L2', 'ACTA2', 'RGS5', 'HIGD1B')
+Endothelial_litterature_markers <-c(aec, peri, hev, lec, tip)
+Endothelial_litterature_markers <- intersect(Endothelial_litterature_markers, rownames(Endothelial_Jef))
+
+genes <- unlist(Endothelial_litterature_markers) # %>% unique()
+
+columns_to_plot <- c("cell.type", "cell.subtype", "cell.status") 
+Endothelial_info <- Endothelial_info[, columns_to_plot]
+write.csv(Endothelial_info, paste0(PATH_FIGSHARE, "Figure9middle_Data", ".csv"))
+
+annot_cols <- list(
+  cell.type = setNames(c("blue", "red"), levels(Endothelial_info$cell.type)),
+  cell.subtype = setNames(c("orange", "purple", "green", "darkblue", "gray"),
+                          levels(Endothelial_info$cell.subtype)),
+  cell.status = setNames(c("blue", "gray"), levels(Endothelial_info$cell.status)))
+
+heatmapAnnot <- rowAnnotation(
+  df = Endothelial_info,
+  show_annotation_name = TRUE,
+  show_legend = TRUE,
+  col = annot_cols)
+
+Endothelial_Jef <- ScaleData(Endothelial_Jef, features = rownames(Endothelial_Jef), verbose = FALSE)
+
+plot_mat = t(as.matrix(Endothelial_Jef[["RNA"]]@scale.data[genes,]))
+write.csv(plot_mat, paste0(PATH_FIGSHARE, "Figure9left_Data", ".csv"))
+
+ht <- Heatmap(plot_mat,
+              show_column_names = T, 
+              show_row_names = F,
+              column_title_gp = gpar(fontsize = 6),
+              row_split = Endothelial_info[,c("cell.type", "cell.subtype")],
+              row_title = NULL,
+              clustering_method_rows = "complete",
+              cluster_columns = F, 
+              cluster_rows = F,
+              col = circlize::colorRamp2(c(-2,0,2), colors = c("#18528f", "white", "#a81d1d")),
+              left_annotation = heatmapAnnot,
+              show_heatmap_legend = F,
+              column_names_gp = gpar(fontfamily = "sans", fontsize = 7, fontface = "italic"))
+
+plot_mat = t(as.matrix(Endothelial_Jef[["RNA"]]@scale.data[Endothelial_markers,]))
+write.csv(plot_mat, paste0(PATH_FIGSHARE, "Figure9right_Data", ".csv"))
+
+ht2 <- Heatmap(matrix = plot_mat, 
+               show_column_names = T, 
+               show_row_names = F,
+               column_title_gp = gpar(fontsize = 6, rot = 45),
+               row_split = Endothelial_info[,c("cell.type", "cell.subtype")],
+               row_title = NULL,
+               clustering_method_rows = "complete",
+               cluster_columns = F, 
+               cluster_rows = F,
+               col = circlize::colorRamp2(c(-2,0,2), colors = c("#18528f", "white", "#a81d1d")),
+               show_heatmap_legend = T,
+               name = "expression.level",
+               column_names_gp = gpar(fontfamily = "sans", fontsize = 7, fontface = "italic", 
+                                      col=Endothelial_labels_colors))
+ht_list <- ht2 + ht
+pdf(paste0(PATH_FIG_HEATMAPS, "Endothelial_withtoudoublets_markers_sc", ".pdf"), width = 8, height = 6)
+draw(ht_list)
+dev.off()
+ht_list
+```
+```{r}
+table(Endothelial_info[rownames(Endothelial_info)%in%Endothelial_dev,]$cell.subtype)
+table(Endothelial_info$cell.subtype)
+```
+
+
+# TCGA survival endothelial (without doublets)
+```{r}
+# 1. Cluster TCGA RP samples based on expression of genes in signature
+Endothelial_markers_TCGA <- intersect(Endothelial_markers, rownames(tcga))
+expr_df = tcga[Endothelial_markers_TCGA, tcga_info$sampleID]
+annot_df = data.frame(tcga_info$LNstatus)
+colnames(annot_df) <- 'LNstatus'
+rownames(annot_df) <- tcga_info$sampleID
+
+colours <- list('LNstatus' = c('N1' = '#FF0000', 'N0' = '#0000FF', 'NA' =  '#FFFFFF'))
+colAnn <- HeatmapAnnotation(df = annot_df,
+                            which = 'col',
+                            col = colours,
+                            annotation_width = unit(c(1, 4), 'cm'),
+                            gap = unit(1, 'mm'))
+write.csv(expr_df, paste0(PATH_FIGSHARE, "SupplementaryFigure910_Data", ".csv"))
+hmap <- Heatmap(expr_df,  show_column_names = FALSE, show_row_names = TRUE, 
+                top_annotation=colAnn, cluster_columns = TRUE, cluster_rows = FALSE, column_km = 2)
+
+pdf(paste0(PATH_FIG_HEATMAPS, "TCGA_clusters_Endothelial_withoutdoublets_markers", ".pdf"), width = 8, height = 8)
+draw(hmap, heatmap_legend_side="left", annotation_legend_side="right")
+dev.off()
+
+column_order <- column_order(hmap)
+sampleIDs <- colnames(expr_df)
+cluster1 <- sampleIDs[column_order$`1`]
+cluster2 <- sampleIDs[column_order$`2`]
+
+print(length(cluster1))
+print(length(cluster2))
+
+cluster1_N1 <- cluster1[cluster1 %in% rownames(annot_df)[annot_df$LNstatus=="N1"]]
+cluster2_N1 <- cluster2[cluster2 %in% rownames(annot_df)[annot_df$LNstatus=="N1"]]
+
+print(length(cluster1_N1))
+print(length(cluster2_N1))
+
+ratio1 = length(cluster1_N1)/length(cluster1)
+ratio2 = length(cluster2_N1)/length(cluster2)
+
+if (ratio1>ratio2){
+  print(fisher.test(matrix(c(length(cluster1_N1), length(cluster1)-length(length(cluster1_N1)),
+                             length(cluster2_N1), length(cluster2)-length(cluster2_N1)), nrow=2), 
+                    alternative="greater"))
+  Endothelial_TCGA_aggressive = sampleIDs[column_order$`1`]
+  print("cluster1 contains a higher number of N1 sample")
+} else {
+  print(fisher.test(matrix(c(length(cluster2_N1), length(cluster2)-length(cluster2_N1),
+                             length(cluster1_N1), length(cluster1)-length(cluster1_N1)), nrow=2), 
+                    alternative="greater"))
+  Endothelial_TCGA_aggressive = sampleIDs[column_order$`2`]
+  print("cluster2 contains a higher number of N1 sample")
+}
+
+tcga_info$cluster <- ifelse(tcga_info$sampleID %in% cluster1, "C1", "C2")
+write.csv(tcga_info, paste0(PATH_FIGSHARE, "SupplementaryFigure911_Data", ".csv"), row.names=FALSE)
+
+# 2. KM
+info <- tcga_info
+fit <- survfit(Surv(endpoint.time, endpoint) ~ cluster, data=info)
+clusters <- levels(as.factor(info$cluster))
+pval <- surv_pvalue(fit)$pval
+
+ggsurv <- ggsurvplot(fit, data = info, size = 1, ylab = "PFI", palette = c("#E7B800", "#2E9FDF"), 
+                     conf.int = TRUE, pval = TRUE, risk.table = TRUE, 
+                     risk.table.col = "strata",censor.shape="|", legend.labs = c(clusters),  
+                     risk.table.height = 0.25, ggtheme = theme_bw())
+
+pdf(paste0(PATH_FIG_SURVIVAL, "TCGA_SC_clusters_Endothelial_withoutdoublets_markers", ".pdf"), width = 6, height = 5)
+print(ggsurv, newpage = FALSE)
+dev.off()
+```
+
+
+```{r}
+DN_RP_zscores_Endothelial = DN_RP_zscores[Endothelial_markers,]
+DN_RP_info <- data.frame(samplestatus = ifelse(colnames(DN_RP_zscores_Endothelial) %in% DN_S, "S",
+                                               ifelse(colnames(DN_RP_zscores_Endothelial) %in% DN_NS, "NS", NA)))
+rownames(DN_RP_info) <- colnames(DN_RP_zscores)
+DN_RP_info$patID <- sapply(rownames(DN_RP_info), function(x) str_split(x, "_")[[1]][2])
+DN_RP_info$patnum <- as.numeric(unlist(str_extract_all(DN_RP_info$patID, "\\d+")))
+DN_RP_info <- DN_RP_info[order(DN_RP_info$patnum, DN_RP_info$samplestatus),]
+DN_RP_info$patID <- factor(DN_RP_info$patID, levels=unique(DN_RP_info$patID))
+
+colours <- list('samplestatus' = c('S' = 'purple', 'NS' = 'orange'))
+colAnn <- HeatmapAnnotation(df = DN_RP_info[,c("patID", "samplestatus")],
+                            which = 'col',
+                            col = colours,
+                            annotation_width = unit(c(1, 4), 'cm'),
+                            gap = unit(1, 'mm'))
+
+write.csv(DN_RP_zscores_Endothelial[,rownames(DN_RP_info)], paste0(PATH_FIGSHARE, "SupplementaryFigure99_Data", ".csv"))
+hmap <- Heatmap(DN_RP_zscores_Endothelial[,rownames(DN_RP_info)],  column_split = DN_RP_info$patnum, 
+                show_column_names = TRUE, show_row_names = TRUE, name="z-scores",
+                top_annotation=colAnn, cluster_columns = FALSE, cluster_rows = FALSE)
+
+pdf(paste0(PATH_FIG_HEATMAPS, "DN_Endothelial_withoutdoublets_markers_signature", ".pdf"), width = 8, height = 8)
+draw(hmap, heatmap_legend_side="left", annotation_legend_side="right")
+dev.off()
+```
+
+```{r}
+LA_RP_zscores_Endothelial = LA_RP_zscores[Endothelial_markers,]
+LA_RP_info <- data.frame(samplestatus = ifelse(colnames(LA_RP_zscores_Endothelial) %in% LA_MS, "S1", ifelse(colnames(LA_RP_zscores_Endothelial) %in% setdiff(LA_S, LA_MS), "S", ifelse(colnames(LA_RP_zscores_Endothelial) %in% LA_NS, "NS", NA))))
+                       
+rownames(LA_RP_info) <- colnames(LA_RP_zscores)
+LA_RP_info$patID <- sapply(rownames(LA_RP_info), function(x) str_split(x, "_")[[1]][2])
+LA_RP_info$patnum <- as.numeric(unlist(str_extract_all(LA_RP_info$patID, "\\d+")))
+LA_RP_info <- LA_RP_info[order(LA_RP_info$patnum, LA_RP_info$samplestatus),]
+LA_RP_info$patID <- factor(LA_RP_info$patID, levels=unique(LA_RP_info$patID))
+
+colours <- list('samplestatus' = c('S1' = 'darkviolet', 'S'= 'purple', 'NS' = 'orange'))
+colAnn <- HeatmapAnnotation(df = LA_RP_info[,c("patID", "samplestatus")],
+                            which = 'col',
+                            col = colours,
+                            annotation_width = unit(c(1, 4), 'cm'),
+                            gap = unit(1, 'mm'))
+
+write.csv(LA_RP_zscores_Endothelial[,rownames(LA_RP_info)], paste0(PATH_FIGSHARE, "SupplementaryFigure98_Data", ".csv"))
+hmap <- Heatmap(LA_RP_zscores_Endothelial[,rownames(LA_RP_info)],  column_split = LA_RP_info$patnum, 
+                show_column_names = TRUE, show_row_names = TRUE, name="z-scores",
+                top_annotation=colAnn, cluster_columns = FALSE, cluster_rows = FALSE)
+
+pdf(paste0(PATH_FIG_HEATMAPS, "LA_Endothelial_withoutdoublets_markers_signature", ".pdf"), width = 14, height = 8)
+draw(hmap, heatmap_legend_side="left", annotation_legend_side="right")
+dev.off()
+```
+
+
+
+
+```{r}
+length(Luminal_TCGA_aggressive)
+length(Fibroblast_TCGA_aggressive)
+length(Endothelial_TCGA_aggressive)
+
+common = intersect(Luminal_TCGA_aggressive, Fibroblast_TCGA_aggressive)
+common = intersect(common, Endothelial_TCGA_aggressive)
+length(common)
+
+info <- tcga_info
+info$cluster <- ifelse(tcga_info$sampleID %in% common, "C1", "C2")
+fit <- survfit(Surv(endpoint.time, endpoint) ~ cluster, data=info)
+clusters <- levels(as.factor(info$cluster))
+pval <- surv_pvalue(fit)$pval
+
+ggsurv <- ggsurvplot(fit, data = info, size = 1, ylab = "PFI", palette = c("#E7B800", "#2E9FDF"), 
+                     conf.int = TRUE, pval = TRUE, risk.table = TRUE, 
+                     risk.table.col = "strata",censor.shape="|", legend.labs = c(clusters),  
+                     risk.table.height = 0.25, ggtheme = theme_bw())
+
+pdf(paste0(PATH_FIG_SURVIVAL, "TCGA_SC_clusters_aggressive_LFE_markers", ".pdf"), width = 6, height = 5)
+print(ggsurv, newpage = FALSE)
+dev.off()
+```
+```{r}
+observed <- rbind(table(tcga_info$LNstatus[tcga_info$sampleID%in%common]), table(tcga_info$LNstatus[!tcga_info$sampleID%in%common]))
+print(observed)
+chi_square_result <- chisq.test(observed)
+chi_square_result
+```
+
+# Combined markers
+```{r}
+# Fib_S_NS_SC <- Fibroblast_dev_markers_sign[(Fibroblast_dev_markers_sign$avg_log2FC>0)
+#                                            &(Fibroblast_dev_markers_sign$pct.1>
+#                                                Fibroblast_dev_markers_sign$pct.2)
+#                                            &(Fibroblast_dev_markers_sign$p_val_adj<0.05),]
+# Lum_S_NS_SC <- Luminal_dev_markers_sign[(Luminal_dev_markers_sign$avg_log2FC>0)
+#                                         &(Luminal_dev_markers_sign$pct.1>
+#                                             Luminal_dev_markers_sign$pct.2)
+#                                         &(Luminal_dev_markers_sign$p_val_adj<0.05),]
+# combined_markers <- union(rownames(Fib_S_NS_SC), rownames(Lum_S_NS_SC))
+# combined_markers <- union(combined_markers, c("COL11A1"))
+# combined_markers_TCGA <- intersect(combined_markers, rownames(tcga))
+# expr_df = tcga[combined_markers_TCGA, tcga_info$sampleID]
+# annot_df = data.frame(tcga_info$LNstatus)
+# colnames(annot_df) <- 'LNstatus'
+# rownames(annot_df) <- tcga_info$sampleID
+# 
+# colours <- list('LNstatus' = c('N1' = '#FF0000', 'N0' = '#0000FF', 'NA' =  '#FFFFFF'))
+# colAnn <- HeatmapAnnotation(df = annot_df,
+#                             which = 'col',
+#                             col = colours,
+#                             annotation_width = unit(c(1, 4), 'cm'),
+#                             gap = unit(1, 'mm'))
+# 
+# hmap <- Heatmap(expr_df,  show_column_names = FALSE, show_row_names = TRUE, 
+#                 top_annotation=colAnn, cluster_columns = TRUE, cluster_rows = TRUE, column_km = 2)
+# 
+# pdf(paste0(PATH_FIG_HEATMAPS, "TCGA_clusters_combined_markers", ".pdf"), width = 8, height = 12)
+# draw(hmap, heatmap_legend_side="left", annotation_legend_side="right")
+# dev.off()
+# 
+# column_order <- column_order(hmap)
+# sampleIDs <- colnames(expr_df)
+# cluster1 <- sampleIDs[column_order$`1`]
+# cluster2 <- sampleIDs[column_order$`2`]
+# 
+# cluster1_N1 <- cluster1[cluster1 %in% rownames(annot_df)[annot_df$LNstatus=="N1"]]
+# cluster2_N1 <- cluster2[cluster2 %in% rownames(annot_df)[annot_df$LNstatus=="N1"]]
+# 
+# ratio1 = length(cluster1_N1)/length(cluster1)
+# ratio2 = length(cluster2_N1)/length(cluster2)
+# 
+# if (ratio1>ratio2){
+#   print(fisher.test(matrix(c(length(cluster1_N1), length(cluster1)-length(length(cluster1_N1)),
+#                              length(cluster2_N1), length(cluster2)-length(cluster2_N1)), nrow=2), 
+#                     alternative="greater"))
+#   TCGA_aggressive = sampleIDs[column_order$`1`]
+#   print("cluster1 contains a higher number of N1 sample")
+# } else {
+#   print(fisher.test(matrix(c(length(cluster2_N1), length(cluster2)-length(cluster2_N1),
+#                              length(cluster1_N1), length(cluster1)-length(cluster1_N1)), nrow=2), 
+#                     alternative="greater"))
+#   TCGA_aggressive = sampleIDs[column_order$`2`]
+#   print("cluster2 contains a higher number of N1 sample")
+# }
+# 
+# tcga_info$cluster <- ifelse(tcga_info$sampleID %in% cluster1, "C1", "C2")
+# 
+# # 2. KM
+# info <- tcga_info
+# fit <- survfit(Surv(endpoint.time, endpoint) ~ cluster, data=info)
+# clusters <- levels(as.factor(info$cluster))
+# pval <- surv_pvalue(fit)$pval
+# print(pval)
+# ggsurv <- ggsurvplot(fit, data = info, size = 1, ylab = "PFI", palette = c("#E7B800", "#2E9FDF"), 
+#                      conf.int = TRUE, pval = TRUE, risk.table = TRUE, 
+#                      risk.table.col = "strata",censor.shape="|", legend.labs = c(clusters),  
+#                      risk.table.height = 0.25, ggtheme = theme_bw())
+# 
+# pdf(paste0(PATH_FIG_SURVIVAL, "TCGA_SC_clusters_combined_markers", ".pdf"), width = 6, height = 5)
+# print(ggsurv, newpage = FALSE)
+# dev.off()
+```
+
+
+```{r}
+col11a1_tcga_n1 = t(tcga["COL11A1",rownames(annot_df)[annot_df$LNstatus=="N1"]])
+col11a1_tcga_n0 = t(tcga["COL11A1",rownames(annot_df)[annot_df$LNstatus=="N0"]])
+
+wilcox.test(col11a1_tcga_n1, col11a1_tcga_n0, alternative="greater")
+
+```
+
+
+```{r}
+DN_S = c("M1RP_ID4_RP9", "M1RP_ID8_RP7", "M1RP_ID23_RP4", "M1RP_ID26_RP3", "M1RP_ID33_RP6")
+DN_NS = c("M1RP_ID3_RP4", "M1RP_ID3_RP5", "M1RP_ID4_RP2", "M1RP_ID4_RP2",
+          "M1RP_ID8_RP1", "M1RP_ID8_RP8", "M1RP_ID8_RP4", "M1RP_ID23_RP9",
+          "M1RP_ID26_RP1", "M1RP_ID33_RP5", "M1RP_ID33_RP9")
+
+DN_RP_zscores_Luminal = DN_RP_zscores[c("COL11A1"),]
+DN_RP_info <- data.frame(samplestatus = ifelse(colnames(DN_RP_zscores_Luminal) %in% DN_S, "S",
+                                               ifelse(colnames(DN_RP_zscores_Luminal) %in% DN_NS, "NS", NA)))
+rownames(DN_RP_info) <- colnames(DN_RP_zscores)
+DN_RP_info$patID <- sapply(rownames(DN_RP_info), function(x) str_split(x, "_")[[1]][2])
+DN_RP_info$patnum <- as.numeric(unlist(str_extract_all(DN_RP_info$patID, "\\d+")))
+DN_RP_info <- DN_RP_info[order(DN_RP_info$patnum, DN_RP_info$samplestatus),]
+DN_RP_info$patID <- factor(DN_RP_info$patID, levels=unique(DN_RP_info$patID))
+
+colours <- list('samplestatus' = c('S' = 'purple', 'NS' = 'orange'))
+colAnn <- HeatmapAnnotation(df = DN_RP_info[,c("patID", "samplestatus")],
+                            which = 'col',
+                            col = colours,
+                            annotation_width = unit(c(1, 4), 'cm'),
+                            gap = unit(1, 'mm'))
+
+hmap <- Heatmap(DN_RP_zscores_Luminal[,rownames(DN_RP_info)],  column_split = DN_RP_info$patnum, 
+                show_column_names = TRUE, show_row_names = TRUE, name="z-scores",
+                top_annotation=colAnn, cluster_columns = FALSE, cluster_rows = FALSE)
+
+pdf(paste0(PATH_FIG_HEATMAPS, "DN_COL11A1", ".pdf"), width = 8, height = 3)
+draw(hmap, heatmap_legend_side="left", annotation_legend_side="right")
+dev.off()
+```
+
+
+```{r}
+LA_MS = c("HR_ID1_RP3", "HR_ID3_RP1", "HR_ID4_RP2", "HR_ID5_RP1", "HR_ID6_RP2", 
+       "HR_ID7_RP4", "HR_ID9_RP1", "HR_ID10_RP3", "HR_ID11_RP4", "HR_ID15_RP5",
+       "HR_ID17_RP6", "HR_ID18_RP5")
+LA_LNS = c("HR_ID1_RP5", "HR_ID3_RP3", "HR_ID4_RP5", "HR_ID5_RP3", "HR_ID6_RP5",
+        "HR_ID7_RP5", "HR_ID9_RP4", "HR_ID10_RP1", "HR_ID11_RP1", "HR_ID15_RP4",
+        "HR_ID17_RP4", "HR_ID18_RP4")
+
+LA_S = c("HR_ID1_RP3", "HR_ID1_RP4", "HR_ID3_RP1", "HR_ID4_RP2", 
+      "HR_ID5_RP1", "HR_ID5_RP2", "HR_ID6_RP2", "HR_ID6_RP4", 
+      "HR_ID7_RP4", "HR_ID7_RP3", "HR_ID9_RP1", "HR_ID9_RP5", "HR_ID9_RP2", 
+      "HR_ID10_RP3",  "HR_ID11_RP4", "HR_ID11_RP5", "HR_ID11_RP2", 
+      "HR_ID15_RP5", "HR_ID17_RP6", "HR_ID17_RP1", "HR_ID18_RP5")
+LA_NS = c("HR_ID1_RP5", "HR_ID1_RP1", "HR_ID1_RP2", 
+       "HR_ID3_RP3", "HR_ID3_RP4", "HR_ID3_RP2", "HR_ID3_RP5",
+       "HR_ID4_RP5", "HR_ID4_RP1", "HR_ID4_RP3", "HR_ID4_RP4",
+       "HR_ID5_RP3", "HR_ID5_RP4", "HR_ID6_RP5", "HR_ID6_RP1", "HR_ID6_RP3", 
+       "HR_ID7_RP5", "HR_ID7_RP1", "HR_ID7_RP6", "HR_ID7_RP2", "HR_ID9_RP4", "HR_ID9_RP3",
+       "HR_ID10_RP1", "HR_ID10_RP2", "HR_ID10_RP6", "HR_ID10_RP5","HR_ID10_RP4",
+       "HR_ID11_RP1", "HR_ID11_RP3",
+       "HR_ID15_RP4", "HR_ID15_RP2", "HR_ID15_RP1", "HR_ID15_RP3", 
+       "HR_ID17_RP4", "HR_ID17_RP5", "HR_ID17_RP3", "HR_ID17_RP2",
+       "HR_ID18_RP4", "HR_ID18_RP3", "HR_ID18_RP1", "HR_ID18_RP2")
+
+LA_RP_zscores_Luminal = LA_RP_zscores[c("COL11A1"),]
+LA_RP_info <- data.frame(samplestatus = ifelse(colnames(LA_RP_zscores_Luminal) %in% LA_MS, "S1", ifelse(colnames(LA_RP_zscores_Luminal) %in% setdiff(LA_S, LA_MS), "S", ifelse(colnames(LA_RP_zscores_Luminal) %in% LA_NS, "NS", NA))))
+                       
+rownames(LA_RP_info) <- colnames(LA_RP_zscores)
+LA_RP_info$patID <- sapply(rownames(LA_RP_info), function(x) str_split(x, "_")[[1]][2])
+LA_RP_info$patnum <- as.numeric(unlist(str_extract_all(LA_RP_info$patID, "\\d+")))
+LA_RP_info <- LA_RP_info[order(LA_RP_info$patnum, LA_RP_info$samplestatus),]
+LA_RP_info$patID <- factor(LA_RP_info$patID, levels=unique(LA_RP_info$patID))
+
+colours <- list('samplestatus' = c('S1' = 'darkviolet', 'S'= 'purple', 'NS' = 'orange'))
+colAnn <- HeatmapAnnotation(df = LA_RP_info[,c("patID", "samplestatus")],
+                            which = 'col',
+                            col = colours,
+                            annotation_width = unit(c(1, 4), 'cm'),
+                            gap = unit(1, 'mm'))
+
+hmap <- Heatmap(LA_RP_zscores_Luminal[,rownames(LA_RP_info)],  column_split = LA_RP_info$patnum, 
+                show_column_names = TRUE, show_row_names = TRUE, name="z-scores",
+                top_annotation=colAnn, cluster_columns = FALSE, cluster_rows = FALSE)
+
+pdf(paste0(PATH_FIG_HEATMAPS, "LA_COL11A1", ".pdf"), width = 16, height = 3)
+draw(hmap, heatmap_legend_side="left", annotation_legend_side="right")
+dev.off()
+```
