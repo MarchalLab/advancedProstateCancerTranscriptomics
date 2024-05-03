@@ -3133,3 +3133,183 @@ pdf(paste0(PATH_FIG_HEATMAPS, "LA_COL11A1", ".pdf"), width = 16, height = 3)
 draw(hmap, heatmap_legend_side="left", annotation_legend_side="right")
 dev.off()
 ```
+
+```{r}
+#plot fibroblast marker expression in locally advanced and de novo cohort
+
+#inputfiles
+LA_countFile <- "/shares/bioit/backup-Louise/Paper-AdvancedProstateCancerTranscriptomics/NatureSubmission/Data/locally_advanced_counts.csv"
+DN_countFile <- "/shares/bioit/backup-Louise/Paper-AdvancedProstateCancerTranscriptomics/NatureSubmission/Data/de_novo_counts_47.csv"
+
+#genes of interest (all genes from fig8)
+fibroLouise <- c("PTGDS", "SERPINF1", "MMP2", "IGFBP6", "CTGF", "GSN", "MRC2", "TCF21", "MATN2", "SSPN",
+                 "S100A6", "COL16A1", "SCARA5", "BOC", "FST", "MEG3", "SSC5D", "NHSL2", "P3H3", "CHRDL1", 
+                 "ANGPTL2", "FAM107A", "MEIS1", "AHNAK2")
+fibroJef <- c("MYH11", "ACTA2", "PLN", "ACTG2", "HRH2", "SORBS1", 
+              "RGS5", "NDUFA4L2", "HIGD1B", "CFD", "GSN", "APOD", "MFAP5", "ADH1B", "SFRP1", "PDGFRA", "CD34", 
+              "COMP", "CTHRC1", "FN1", "DCN", "LUM", "VCAN", "COL14A1", "FBLN1", "FBLN2", "LOX", "LOXL1",
+              "CXCL14", "SEMA3C", "SFRP4", "FAP", "COL10A1", "COL11A1", "THBS2", "INHBA")
+fibro_markers <- c(fibroLouise, fibroJef)
+
+fibro_markersTable <- data.frame("marker" = fibro_markers, 
+                                 "type" = c(rep("signature", length(fibroLouise)), rep("literature", length(fibroJef))))
+```
+
+
+```{r}
+set.seed(1234)
+
+#get z-scores for gene expression in locally advanced dataset
+LA_counts <- read.table(LA_countFile, header=T, row.name=1, sep=",")
+colnames(LA_counts) <- ifelse(colnames(LA_counts) != "HR_ID5_MLNL", colnames(LA_counts), "HR_ID5_NL") #one sample was wrongly labeled
+
+#only keep RP samples
+LA_counts <- LA_counts[, grepl("RP", colnames(LA_counts))]
+
+keep <- filterByExpr(LA_counts, min.count = 10, min.total.count = 15, min.prop = 0.1)
+LA_counts <- LA_counts[keep,]
+LA_counts <- LA_counts[apply(LA_counts, 1, var) >= 0.1,]
+LA_counts <- log2(LA_counts + 1)
+LA_zscores <- as.data.frame(scale(LA_counts, center = colMeans(LA_counts), 
+                                     scale =  apply(LA_counts, 2, sd)))
+
+#seeding and non-seeding annotation
+LA_MS = c("HR_ID1_RP3", "HR_ID3_RP1", "HR_ID4_RP2", "HR_ID5_RP1", "HR_ID6_RP2", 
+          "HR_ID7_RP4", "HR_ID9_RP1", "HR_ID10_RP3", "HR_ID11_RP4", "HR_ID15_RP5",
+          "HR_ID17_RP6", "HR_ID18_RP5") #most seeding
+LA_LNS = c("HR_ID1_RP5", "HR_ID3_RP3", "HR_ID4_RP5", "HR_ID5_RP3", "HR_ID6_RP5",
+           "HR_ID7_RP5", "HR_ID9_RP4", "HR_ID10_RP1", "HR_ID11_RP1", "HR_ID15_RP4",
+           "HR_ID17_RP4", "HR_ID18_RP4") #most non-seeding
+LA_S = c("HR_ID1_RP3", "HR_ID1_RP4", "HR_ID3_RP1", "HR_ID4_RP2", 
+         "HR_ID5_RP1", "HR_ID5_RP2", "HR_ID6_RP2", "HR_ID6_RP4", 
+         "HR_ID7_RP4", "HR_ID7_RP3", "HR_ID9_RP1", "HR_ID9_RP5", "HR_ID9_RP2", 
+         "HR_ID10_RP3",  "HR_ID11_RP4", "HR_ID11_RP5", "HR_ID11_RP2", 
+         "HR_ID15_RP5", "HR_ID17_RP6", "HR_ID17_RP1", "HR_ID18_RP5") #seeding
+LA_NS = c("HR_ID1_RP5", "HR_ID1_RP1", "HR_ID1_RP2", 
+          "HR_ID3_RP3", "HR_ID3_RP4", "HR_ID3_RP2", "HR_ID3_RP5",
+          "HR_ID4_RP5", "HR_ID4_RP1", "HR_ID4_RP3", "HR_ID4_RP4",
+          "HR_ID5_RP3", "HR_ID5_RP4", "HR_ID6_RP5", "HR_ID6_RP1", "HR_ID6_RP3", 
+          "HR_ID7_RP5", "HR_ID7_RP1", "HR_ID7_RP6", "HR_ID7_RP2", "HR_ID9_RP4", "HR_ID9_RP3",
+          "HR_ID10_RP1", "HR_ID10_RP2", "HR_ID10_RP6", "HR_ID10_RP5","HR_ID10_RP4",
+          "HR_ID11_RP1", "HR_ID11_RP3",
+          "HR_ID15_RP4", "HR_ID15_RP2", "HR_ID15_RP1", "HR_ID15_RP3", 
+          "HR_ID17_RP4", "HR_ID17_RP5", "HR_ID17_RP3", "HR_ID17_RP2",
+          "HR_ID18_RP4", "HR_ID18_RP3", "HR_ID18_RP1", "HR_ID18_RP2") #non seeding
+
+LA_zscores_fibro = LA_zscores[fibro_markers,]
+LA_info <- data.frame(samplestatus = ifelse(colnames(LA_zscores_fibro) %in% LA_MS, "S1", 
+                                            ifelse(colnames(LA_zscores_fibro) %in% setdiff(LA_S, LA_MS), "S", 
+                                                   ifelse(colnames(LA_zscores_fibro) %in% LA_NS, "NS", NA))))
+rownames(LA_info) <- colnames(LA_zscores_fibro)
+LA_info$patID <- sapply(rownames(LA_info), function(x) str_split(x, "_")[[1]][2])
+LA_info$patnum <- as.numeric(unlist(str_extract_all(LA_info$patID, "\\d+")))
+LA_info$patID <- factor(LA_info$patID, levels=c("ID1", "ID2", "ID3", "ID4", "ID5", "ID6", "ID7", "ID9", "ID10", "ID11", "ID15",
+                                                "ID16", "ID17", "ID18", "ID19", "ID24", "ID25"))
+LA_info$samplestatus <- factor(LA_info$samplestatus, levels = c("NL", "NS", "RP", "S", "S1", "MLN"))
+LA_info <- LA_info[order(LA_info$patnum, LA_info$samplestatus),]
+LA_zscores_fibro <- LA_zscores_fibro[,rownames(LA_info)]
+
+#write.csv(LA_info, paste0(PATH_FIGSHARE, "locally_advanced_primaries_seeding_status", ".csv"))
+
+#colours <- list('samplestatus' = c('NL' = 'green','S1' = 'darkviolet', 'S'= 'purple', 'NS' = 'orange', 'RP' = 'lightcoral', 'MLN' = 'red'))
+colours <- list('samplestatus' = c('S1' = 'darkviolet', 'S'= 'purple', 'NS' = 'orange'))
+colAnn <- HeatmapAnnotation(df = LA_info[,c("patID", "samplestatus")],
+                            which = 'col',
+                            col = colours,
+                            annotation_width = unit(c(1, 4), 'cm'),
+                            gap = unit(1, 'mm'))
+colours <- list('type' = c("signature" = "forestgreen", "literature" = "deepskyblue"))
+rowAnn <- HeatmapAnnotation(df = fibro_markersTable[, "type", drop = F], 
+                            which = 'row', 
+                            col = colours,
+                            annotation_label = "markertype")
+write.csv(LA_zscores_fibro[,rownames(LA_info)], paste0(PATH_FIGSHARE, "LA_fibroMarkers_RP", ".csv"))
+
+hmap <- Heatmap(LA_zscores_fibro[,rownames(LA_info)],  column_split = LA_info$patnum, 
+                show_column_names = TRUE, show_row_names = TRUE, name="z-scores",
+                top_annotation=colAnn, right_annotation = rowAnn, 
+                cluster_columns = FALSE, cluster_rows = FALSE)
+
+pdf(paste0("~/Documents/natureLouise/", "LA_fibroMarkers_RP", ".pdf"), width = 25, height = 12)
+draw(hmap, heatmap_legend_side="left", annotation_legend_side="right")
+dev.off()
+
+png(paste0("~/Documents/natureLouise/", "LA_fibroMarkers_RP", ".png"), width = 1200, height = 800)
+draw(hmap, heatmap_legend_side="left", annotation_legend_side="right")
+dev.off()
+
+```
+
+```{r}
+set.seed(1234)
+
+#get z-scores for gene expression in de novo dataset
+DN_counts <- read.table(DN_countFile, header=T, row.name=1, sep=",")
+DN_counts <- subset(DN_counts, select = -M1RP_ID23_RP4)               #remove bad quality sample
+colnames(DN_counts) <- ifelse(colnames(DN_counts) != "M1RP_ID23_RP44",
+                              colnames(DN_counts), "M1RP_ID23_RP4")   #one sample re-sequenced because of bad quality
+
+#only keep RP samples
+DN_counts <- DN_counts[, grepl("RP", colnames(DN_counts))]
+
+keep <- filterByExpr(DN_counts, min.count = 10, min.total.count = 15, min.prop = 0.1)
+DN_counts <- DN_counts[keep,]
+DN_counts <- DN_counts[apply(DN_counts, 1, var) >= 0.1,]
+DN_counts <- log2(DN_counts + 1)
+DN_zscores <- as.data.frame(scale(DN_counts, center = colMeans(DN_counts), 
+                                  scale =  apply(DN_counts, 2, sd)))
+
+#seeding and non-seeding annotation
+DN_MS <-  c("M1RP_ID4_RP9", "M1RP_ID8_RP7", "M1RP_ID23_RP4", "M1RP_ID26_RP3", "M1RP_ID33_RP6")   #most seeding
+DN_LNS = c("M1RP_ID8_RP1", "M1RP_ID23_RP9", "M1RP_ID26_RP1", "M1RP_ID33_RP5")                    #most non-seeding
+DN_NS = c("M1RP_ID3_RP4", "M1RP_ID3_RP5", "M1RP_ID4_RP2", "M1RP_ID8_RP1", "M1RP_ID8_RP8", 
+          "M1RP_ID8_RP4", "M1RP_ID23_RP9", "M1RP_ID26_RP1", "M1RP_ID33_RP5", "M1RP_ID33_RP9")    #non-seeding
+
+DN_zscores_fibro = DN_zscores[fibro_markers,]
+DN_info <- data.frame(sampleID = colnames(DN_zscores_fibro))
+DN_info$samplestatus <- ifelse(DN_info$sampleID %in% DN_MS, "S", 
+                              ifelse(DN_info$sampleID %in% DN_NS, "NS", NA))
+rownames(DN_info) <- DN_info$sampleID
+DN_info$patID <- sapply(DN_info$sampleID, function(x) str_split(x, "_")[[1]][2])
+DN_info$patnum <- as.numeric(unlist(str_extract_all(DN_info$patID, "\\d+")))
+DN_info$patID <- factor(DN_info$patID, levels=c("ID1", "ID2", "ID3", "ID4", "ID6", "ID7", "ID8", "ID13", "ID14", "ID19",
+                                                "ID23", "ID26", "ID28", "ID33", "ID34", "ID37"))
+#DN_info$samplestatus <- factor(DN_info$samplestatus, levels = c( "NS", "RP", "S", "MLN"))
+DN_info$samplestatus <- factor(DN_info$samplestatus, levels = c( "NS", "S"))
+DN_info <- DN_info[order(DN_info$patnum, DN_info$samplestatus),]
+
+# #remove NL and MLN samples
+# DN_info <- DN_info[! DN_info$samplestatus %in% c("NL", "MLN"),]
+DN_zscores_fibro <- DN_zscores_fibro[,rownames(DN_info)]
+
+#write.csv(DN_info, paste0(PATH_FIGSHARE, "locally_advanced_primaries_seeding_status", ".csv"))
+
+#colours <- list('samplestatus' = c('S'= 'purple', 'NS' = 'orange', 'RP' = 'lightcoral', 'MLN' = 'red'))
+colours <- list('samplestatus' = c('S'= 'purple', 'NS' = 'orange'))
+colAnn <- HeatmapAnnotation(df = DN_info[,c("patID", "samplestatus")],
+                            which = 'col',
+                            col = colours,
+                            annotation_width = unit(c(1, 4), 'cm'),
+                            gap = unit(1, 'mm'))
+
+colours <- list('type' = c("signature" = "forestgreen", "literature" = "deepskyblue"))
+rowAnn <- HeatmapAnnotation(df = fibro_markersTable[, "type", drop = F], 
+                            which = 'row', 
+                            col = colours,
+                            annotation_label = "markertype")
+
+write.csv(DN_zscores_fibro[,rownames(DN_info)], paste0(PATH_FIGSHARE, "DN_fibroMarkers_RP", ".csv"))
+
+hmap <- Heatmap(DN_zscores_fibro[,rownames(DN_info)],  column_split = DN_info$patnum, 
+                show_column_names = TRUE, show_row_names = TRUE, name="z-scores",
+                top_annotation=colAnn, right_annotation = rowAnn, 
+                cluster_columns = FALSE, cluster_rows = FALSE)
+
+pdf(paste0("~/Documents/natureLouise/", "DN_fibroMarkers_RP", ".pdf"), width = 25, height = 12)
+draw(hmap, heatmap_legend_side="left", annotation_legend_side="right")
+dev.off()
+
+png(paste0("~/Documents/natureLouise/", "DN_fibroMarkers_RP", ".png"), width = 1000, height = 800)
+draw(hmap, heatmap_legend_side="left", annotation_legend_side="right")
+dev.off()
+```
