@@ -1108,6 +1108,31 @@ tcga <- as.data.frame(scale(tcga, center = colMeans(tcga), scale =  apply(tcga, 
 
 
 # Single cell validation
+
+```{r}
+#unfiltered Chen UMAP
+
+chen <- readRDS("/home/bioit/ldschaet/Desktop/NatureSubmission/Data/chenSeuratObj.rds")
+cellannot <- read.csv("/home/bioit/ldschaet/Desktop/NatureSubmission/Data/cell_annotation.csv")
+cellannot["type"][cellannot["type"]=="Monolytic"] <- "Monocytic"
+cellannot["type"][cellannot["type"]=="B cel"] <- "B"
+cellannot["celltype"] = cellannot["type"]
+cellannot["celltype"][cellannot["celltype"]=="Cell Cycle"] <- "Luminal"
+chen$sampleID <- cellannot$sampleID
+chen$celltype <- cellannot$celltype
+print(unique(chen$celltype))
+chen$status <- cellannot$status
+Idents(chen) <- chen@meta.data$celltype
+chen_info <- chen@meta.data
+sorted_idents <- c("Luminal", "Basal/Intermediate", 'Fibroblast', 'Endothelial', 'Monocytic', 'Mast', 'T','B', 'unknown')
+Idents(chen) <- factor(x =Idents(chen), levels = sorted_idents)
+chen_norm <- NormalizeData(chen)
+
+plot <- DimPlot(chen)
+ggsave(paste0(PATH_FIG_SC, "chen", ".svg"), plot=plot , width = 8, height = 5)
+write.csv(chen@reductions$umap@cell.embeddings, paste0(PATH_FIGSHARE, "chen_umap", ".csv"))
+```
+
 ```{r}
 chen <- readRDS("/home/bioit/ldschaet/Desktop/NatureSubmission/Data/chenSeuratObj.rds")
 cellannot <- read.csv("/home/bioit/ldschaet/Desktop/NatureSubmission/Data/cell_annotation.csv")
