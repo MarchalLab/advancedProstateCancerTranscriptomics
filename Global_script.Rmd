@@ -3134,8 +3134,53 @@ draw(hmap, heatmap_legend_side="left", annotation_legend_side="right")
 dev.off()
 ```
 
+#plot expression of fibroblast markers across all celltypes
+
 ```{r}
-#plot fibroblast marker expression in locally advanced and de novo cohort
+
+#genes of interest
+fibroLouise <- c("PTGDS", "SERPINF1", "MMP2", "IGFBP6", "CTGF", "GSN", "MRC2", "TCF21", "MATN2", "SSPN",
+                 "S100A6", "COL16A1", "SCARA5", "BOC", "FST", "MEG3", "SSC5D", "NHSL2", "P3H3", "CHRDL1", 
+                 "ANGPTL2", "FAM107A", "MEIS1", "AHNAK2")
+fibroJef <- c("MYH11", "ACTA2", "PLN", "ACTG2", "HRH2", "SORBS1", 
+              "RGS5", "NDUFA4L2", "HIGD1B", "CFD", "GSN", "APOD", "MFAP5", "ADH1B", "SFRP1", "PDGFRA", "CD34", 
+              "COMP", "CTHRC1", "FN1", "DCN", "LUM", "VCAN", "COL14A1", "FBLN1", "FBLN2", "LOX", "LOXL1",
+              "CXCL14", "SEMA3C", "SFRP4", "FAP", "COL10A1", "COL11A1", "THBS2", "INHBA")
+fibro_markers <- c(fibroLouise, fibroJef)
+
+#get seurat obj of all cells
+chen <- readRDS("/shares/bioit/backup-Louise/Paper-AdvancedProstateCancerTranscriptomics/NatureSubmission/Data/chenSeuratObj.rds")
+
+
+pdf(paste0("~/Documents/natureLouise/", "expr_fibroLouise", ".pdf"), width = 30, height = 30)
+FeaturePlot(object = chen, features = fibroLouise)
+dev.off()
+
+png(paste0("~/Documents/natureLouise/", "expr_fibroLouise", ".png"), width = 3000, height = 3000)
+FeaturePlot(object = chen, features = fibroLouise)
+dev.off()
+
+svg(paste0("~/Documents/natureLouise/", "expr_fibroLouise", ".svg"), width = 30, height = 30)
+FeaturePlot(object = chen, features = fibroLouise)
+dev.off()
+
+pdf(paste0("~/Documents/natureLouise/", "expr_fibroJef", ".pdf"), width = 30, height = 30)
+FeaturePlot(object = chen, features = fibroJef)
+dev.off()
+
+png(paste0("~/Documents/natureLouise/", "expr_fibroJef", ".png"), width = 3000, height = 4500)
+FeaturePlot(object = chen, features = fibroJef)
+dev.off()
+
+svg(paste0("~/Documents/natureLouise/", "expr_fibroJef", ".svg"), width = 30, height = 45)
+FeaturePlot(object = chen, features = fibroJef)
+dev.off()
+
+```
+
+#plot fibroblast marker expression in bulk data from locally advanced and de novo cohort
+
+```{r}
 
 #inputfiles
 LA_countFile <- "/shares/bioit/backup-Louise/Paper-AdvancedProstateCancerTranscriptomics/NatureSubmission/Data/locally_advanced_counts.csv"
